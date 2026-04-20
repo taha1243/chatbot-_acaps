@@ -1,0 +1,122 @@
+services:
+  # ===========================================
+  # 1. Vector Database - PostgreSQL + pgvector
+  # ===========================================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: atlas-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-atlas_rag}
+      POSTGRES_USER: ${POSTGRES_USER:-atlas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atlas}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atlas} -d ${POSTGRES_DB:-atlas_rag}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - atlas-network
+
+  # ===========================================
+  # 2. Database Admin - pgAdmin
+  # ===========================================
+  pgadmin:
+    image: dpage/pgadmin4:8.10
+    container_name: atlas-pgadmin
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@atlas.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    depends_on:
+      - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - atlas-network
+
+  # ===========================================
+  # 3. Backend API - FastAPI
+  # ===========================================
+  api:
+    build:
+      context: ./backend_api
+      dockerfile: Dockerfile
+    container_name: atlas-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      VLLM_URL: ${VLLM_URL:-http://localhost:11434/v1}
+      VLLM_API_KEY: ${VLLM_API_KEY:-secret}
+      VLLM_MODEL: ${VLLM_MODEL:-qwen2.5:7b}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://atlas:atlas@postgres:5432/atlas_rag}
+      VECTOR_TABLE: ${VECTOR_TABLE:-atlas_knowledge}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
+      SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.40}
+      TOP_K_RESULTS: ${TOP_K_RESULTS:-5}
+      ENABLE_GUARDRAILS: ${ENABLE_GUARDRAILS:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-}
+      OPENROUTER_TITLE: ${OPENROUTER_TITLE:-}
+    volumes:
+      - ./data_ingestion:/app/data_ingestion:ro
+    depends_on:
+      - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - atlas-network
+
+  # ===========================================
+  # 4. Frontend UI - React
+  # ===========================================
+  ui:
+    build:
+      context: ./frontend_ui
+      dockerfile: Dockerfile
+    container_name: atlas-ui
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - atlas-network
+
+# ===========================================
+# Networks
+# ===========================================
+networks:
+  atlas-network:
+    driver: bridge
+    name: atlas-network
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  postgres_data:
+    name: atlas-postgres-data
+  pgadmin_data:
+    name: atlas-pgadmin-data
+
