@@ -1,3 +1,5 @@
+name: atlas
+
 services:
   # ===========================================
   # 1. Vector Database - PostgreSQL + pgvector
@@ -32,7 +34,7 @@ services:
     ports:
       - "5050:80"
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@atlas.local}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@atlas.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: "False"
     depends_on:
@@ -43,7 +45,36 @@ services:
       - atlas-network
 
   # ===========================================
-  # 3. Backend API - FastAPI
+  # 3. LLM Local - Ollama (qwen2.5:7b)
+  #    - Télécharge le modèle automatiquement au 1er lancement
+  #    - Stocke le modèle dans un volume persistant (pas re-téléchargé)
+  # ===========================================
+  ollama:
+    build:
+      context: ./ollama
+      dockerfile: Dockerfile
+    container_name: atlas-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_MODEL: ${VLLM_MODEL:-qwen2.5:3b}
+      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags | grep -q 'qwen2.5:3b'"]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 600s
+    networks:
+      - atlas-network
+
+  # ===========================================
+  # 4. Backend API - FastAPI
   # ===========================================
   api:
     build:
@@ -54,35 +85,40 @@ services:
     ports:
       - "8080:8080"
     environment:
-      VLLM_URL: ${VLLM_URL:-http://localhost:11434/v1}
-      VLLM_API_KEY: ${VLLM_API_KEY:-secret}
-      VLLM_MODEL: ${VLLM_MODEL:-qwen2.5:7b}
+      VLLM_URL: "http://ollama:11434/v1"
+      VLLM_API_KEY: "ollama"
+      VLLM_MODEL: ${VLLM_MODEL:-qwen2.5:3b}
+      LLM_PROVIDER: "ollama"
+      LLM_FALLBACK_ENABLED: "true"
       DATABASE_URL: ${DATABASE_URL:-postgresql://atlas:atlas@postgres:5432/atlas_rag}
       VECTOR_TABLE: ${VECTOR_TABLE:-atlas_knowledge}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
       EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
       SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.40}
       TOP_K_RESULTS: ${TOP_K_RESULTS:-5}
+      TEMPERATURE: ${TEMPERATURE:-0.0}
+      MAX_TOKENS: ${MAX_TOKENS:-1024}
       ENABLE_GUARDRAILS: ${ENABLE_GUARDRAILS:-true}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
-      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-}
-      OPENROUTER_TITLE: ${OPENROUTER_TITLE:-}
     volumes:
       - ./data_ingestion:/app/data_ingestion:ro
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 120s
     networks:
       - atlas-network
 
   # ===========================================
-  # 4. Frontend UI - React
+  # 5. Frontend UI - React
   # ===========================================
   ui:
     build:
@@ -93,7 +129,8 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/"]
       interval: 30s
@@ -119,4 +156,5 @@ volumes:
     name: atlas-postgres-data
   pgadmin_data:
     name: atlas-pgadmin-data
-
+  ollama_data:
+    name: atlas-ollama-data

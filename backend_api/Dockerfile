@@ -1,38 +1,36 @@
-# Backend API Dockerfile
-# FastAPI application with LlamaIndex
+# Backend API Dockerfile — multi-stage pour réduire la taille finale
 
-FROM python:3.11-slim
+# Stage 1 : compilation des dépendances
+FROM python:3.11-slim AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    build-essential \
-    g++ \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential g++ curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for caching
 COPY requirements.txt .
+RUN pip install --no-cache-dir --timeout=600 --retries=5 \
+    --prefix=/install -r requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Stage 2 : image finale légère
+FROM python:3.11-slim
 
-# Copy application code
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /install /usr/local
+
 COPY . .
 
-# Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
 EXPOSE 8080
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
-

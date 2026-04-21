@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     vllm_model: str = "qwen2.5:7b"  # Ollama model name
     
     # LLM Provider: "ollama", "vllm", "openai", "openrouter"
-    llm_provider: str = "openrouter"
+    llm_provider: str = "ollama"
     openrouter_site_url: Optional[str] = None
     openrouter_title: Optional[str] = None
     

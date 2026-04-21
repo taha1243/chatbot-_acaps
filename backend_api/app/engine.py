@@ -39,19 +39,28 @@ class RAGEngine:
     SYSTEM_PROMPT = """Tu es un assistant de référence pour l'ACAPS (Autorité de Contrôle des Assurances et de la Prévoyance Sociale) spécialisé dans la documentation interne.
 
 RÈGLES ESSENTIELLES :
-1. Réponds uniquement à partir du contexte fourni.
-2. Si l'information n'est pas présente, réponds : "Je ne trouve pas cette information dans les documents disponibles".
-3. Ne fais jamais de suppositions ni d'inventions.
-4. Cite toujours la source en utilisant le chemin d'en-tête fourni.
-5. Sois précis et factuel.
-6. Détermine la langue de la question à partir de "Question" ci-dessous et réponds exclusivement dans cette langue. Si plusieurs langues sont utilisées, privilégie le français.
+1. Réponds en priorité à partir du contexte fourni.
+2. Si une information est présente dans le contexte, cite toujours la source en utilisant le chemin d'en-tête fourni.
+3. Ne fais jamais de suppositions ni d'inventions sur les documents ACAPS.
+4. Sois précis et factuel.
+5. Détermine la langue de la question à partir de "Question" ci-dessous et réponds exclusivement dans cette langue. Si plusieurs langues sont utilisées, privilégie le français.
 
-Contexte des documents :
+Contexte des documents ACAPS :
 {context}
 
 Question : {question}
 
-Réponds uniquement sur la base du contexte ci-dessus :"""
+Réponds en priorité sur la base du contexte ci-dessus. Si le contexte ne contient pas l'information, tu peux utiliser tes connaissances générales en le précisant clairement :"""
+
+    GENERAL_PROMPT = """Tu es un assistant intelligent et polyvalent pour l'ACAPS (Autorité de Contrôle des Assurances et de la Prévoyance Sociale).
+
+Cette question n'est pas couverte par la documentation interne disponible. Réponds à partir de tes connaissances générales de manière utile et précise.
+Précise toujours que ta réponse provient de tes connaissances générales et non des documents ACAPS.
+Détermine la langue de la question et réponds exclusivement dans cette langue. Si plusieurs langues sont utilisées, privilégie le français.
+
+Question : {question}
+
+Réponds de manière utile :"""
     
     def __init__(
         self,
@@ -88,10 +97,12 @@ Réponds uniquement sur la base du contexte ci-dessus :"""
                         default_headers["HTTP-Referer"] = self.settings.openrouter_site_url
                     if self.settings.openrouter_title:
                         default_headers["X-Title"] = self.settings.openrouter_title
+                import httpx
                 self._llm_client = OpenAI(
                     base_url=self.settings.vllm_url,
                     api_key=self.settings.vllm_api_key,
-                    default_headers=default_headers
+                    default_headers=default_headers,
+                    timeout=httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0)
                 )
         return self._llm_client
     
@@ -200,13 +211,15 @@ Réponds uniquement sur la base du contexte ci-dessus :"""
         )
         
         if not search_results:
-            logger.info("No relevant documents found")
+            logger.info("No relevant documents found — falling back to LLM general knowledge")
+            prompt = self.GENERAL_PROMPT.format(question=question)
+            answer = self._generate_conversational(prompt)
             return RAGResponse(
-                answer="I cannot find relevant information in the available documents.",
+                answer=answer,
                 citations=[],
                 confidence=0.0,
                 context_used="",
-                metadata={"retrieval_count": 0}
+                metadata={"retrieval_count": 0, "source": "llm_general_knowledge"}
             )
         
         # Step 3: Build context from retrieved documents
@@ -335,11 +348,11 @@ Réponds uniquement sur la base du contexte ci-dessus :"""
             response = self.llm_client.chat.completions.create(
                 model=self.settings.vllm_model,
                 messages=[
-                    {"role": "system", "content": "You are a helpful, professional AI assistant for ACAPS (Morocco Insurance Authority). Always answer in French."},
+                    {"role": "system", "content": "Tu es un assistant utile et professionnel pour l'ACAPS (Autorité de Contrôle des Assurances et de la Prévoyance Sociale). Réponds toujours dans la langue de la question. Si la langue est ambiguë, utilise le français."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,  # Slightly higher temperature for natural conversation
-                max_tokens=200
+                temperature=0.7,
+                max_tokens=self.settings.max_tokens
             )
             return response.choices[0].message.content
         except Exception as e:
