@@ -328,14 +328,17 @@ class VectorStore:
         top_k: int = 5,
         score_threshold: float = 0.0,
         keyword_boost: float = 0.3,
+        file_name: Optional[str] = None,
     ) -> List[SearchResult]:
         """Hybrid search combining semantic and keyword search."""
         import re
 
+        filter_conditions = {"file_name": file_name} if file_name else None
         semantic_results = self.search(
             query_embedding=query_embedding,
             top_k=top_k * 2,
             score_threshold=None,
+            filter_conditions=filter_conditions,
         )
 
         keyword_results: List[SearchResult] = []
@@ -360,6 +363,8 @@ class VectorStore:
                     keyword = f"Titre {match.group(1)}"
 
                 kw_results = self.search_by_keyword(keyword, field="header_path", top_k=5)
+                if file_name:
+                    kw_results = [r for r in kw_results if r.file_name == file_name]
                 keyword_results.extend(kw_results)
                 logger.info("Keyword search for '%s' found %s results", keyword, len(kw_results))
 
@@ -595,17 +600,21 @@ class MockVectorStore:
         top_k: int = 5,
         score_threshold: float = 0.0,
         keyword_boost: float = 0.3,
+        file_name: Optional[str] = None,
     ) -> List[SearchResult]:
         import re
 
-        semantic_results = self.search(query_embedding=query_embedding, top_k=top_k * 2)
+        filter_conditions = {"file_name": file_name} if file_name else None
+        semantic_results = self.search(query_embedding=query_embedding, top_k=top_k * 2,
+                                       filter_conditions=filter_conditions)
         keyword_results = []
 
         match = re.search(r"article\s*(\d+)", query_text.lower())
         if match:
-            keyword_results.extend(
-                self.search_by_keyword(f"Article {match.group(1)}", field="header_path", top_k=5)
-            )
+            kw = self.search_by_keyword(f"Article {match.group(1)}", field="header_path", top_k=5)
+            if file_name:
+                kw = [r for r in kw if r.file_name == file_name]
+            keyword_results.extend(kw)
 
         result_map = {result.id: result for result in semantic_results}
         for result in keyword_results:

@@ -3,6 +3,7 @@ RAG Engine for Atlas-RAG
 PostgreSQL + pgvector retrieval and OpenAI-compatible generation orchestration.
 """
 import logging
+import re
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 
@@ -35,61 +36,136 @@ class RAGEngine:
     Main RAG engine orchestrating retrieval and generation.
     Uses pgvector-backed retrieval and an OpenAI-compatible API for generation.
     """
-    
-    SYSTEM_PROMPT = """Tu es un assistant de référence pour l'ACAPS (Autorité de Contrôle des Assurances et de la Prévoyance Sociale) spécialisé dans la documentation interne.
 
-RÈGLES ESSENTIELLES :
-1. Réponds en priorité à partir du contexte fourni.
-2. Si une information est présente dans le contexte, cite toujours la source en utilisant le chemin d'en-tête fourni.
-3. Ne fais jamais de suppositions ni d'inventions sur les documents ACAPS.
-4. Sois précis et factuel.
-5. Détermine la langue de la question à partir de "Question" ci-dessous et réponds exclusivement dans cette langue. Si plusieurs langues sont utilisées, privilégie le français.
+    PORTAL_FILE = "guide_portal_acaps.md"
 
-Contexte des documents ACAPS :
+    SYSTEM_PROMPT = """Tu es l'assistant officiel du portail ACAPS.
+
+OBJECTIF :
+Aider l'utilisateur à utiliser le portail (soumettre, suivre, gérer une réclamation).
+
+RÈGLES :
+1. Utilise uniquement les informations du guide fourni ci-dessous.
+2. Reformule et interprète la question si elle est mal exprimée (français, arabe ou darija).
+3. Si la question est ambiguë ou incomplète, pose une question de clarification courte.
+4. Donne des réponses simples, structurées et orientées action.
+5. Si plusieurs étapes sont nécessaires, réponds étape par étape.
+6. Si l'information n'existe pas dans le guide, dis-le clairement sans inventer.
+7. Ne jamais inventer d'informations absentes du guide.
+
+COMPORTEMENT :
+- Si l'utilisateur veut faire une action → guide-le étape par étape.
+- Si l'utilisateur a un problème → propose une solution basée sur le guide.
+- Si la question est partiellement liée → donne les éléments utiles du guide.
+
+LANGUE :
+- Réponds dans la langue de l'utilisateur : français, arabe, ou darija.
+
+Guide du portail ACAPS :
 {context}
 
 Question : {question}
 
-Réponds en priorité sur la base du contexte ci-dessus. Si le contexte ne contient pas l'information, tu peux utiliser tes connaissances générales en le précisant clairement :"""
+Réponse :"""
 
-    GENERAL_PROMPT = """Tu es un assistant intelligent et polyvalent pour l'ACAPS (Autorité de Contrôle des Assurances et de la Prévoyance Sociale).
+    GENERAL_PROMPT = """Tu es l'assistant du portail ACAPS.
 
-Cette question n'est pas couverte par la documentation interne disponible. Réponds à partir de tes connaissances générales de manière utile et précise.
-Précise toujours que ta réponse provient de tes connaissances générales et non des documents ACAPS.
-Détermine la langue de la question et réponds exclusivement dans cette langue. Si plusieurs langues sont utilisées, privilégie le français.
+La question ne correspond pas directement au guide du portail.
+
+Réponds de manière utile et naturelle :
+1. Explique brièvement que tu es spécialisé dans l'utilisation du portail ACAPS.
+2. Propose ce que tu peux faire :
+   - Aider à soumettre une réclamation (Section 1)
+   - Aider à suivre une réclamation (Section 2)
+   - Expliquer comment clôturer ou réouvrir une réclamation (Section 3)
+   - Donner des informations sur le questionnaire de satisfaction (Section 4)
+3. Invite l'utilisateur à reformuler sa demande.
 
 Question : {question}
 
-Réponds de manière utile :"""
-    
+Réponse :"""
+
+    # Darija / Arabic → French keyword mapping for query normalization
+    DARIJA_MAP = {
+        # Verbs
+        "ndir": "faire", "n9der": "je peux", "n9eder": "je peux",
+        "nkdar": "je peux", "bghit": "je veux", "bghina": "nous voulons",
+        "sifet": "envoyer", "tsifet": "envoyé", "mcha": "parti",
+        # Question words
+        "fin": "où", "wach": "est-ce que", "kifach": "comment",
+        "kif": "comment", "chno": "quoi", "3lach": "pourquoi",
+        "mnin": "depuis quand",
+        # Nouns
+        "chikaya": "réclamation", "chikayah": "réclamation",
+        "chikayat": "réclamation", "plainte": "réclamation",
+        "mouchkil": "problème", "mochkil": "problème",
+        "jawab": "réponse", "rdoud": "réponse",
+        "numero": "numéro", "ref": "référence",
+        # Arabic
+        "شكاية": "réclamation", "شكوى": "réclamation",
+        "كيفاش": "comment", "ندير": "faire", "وين": "où",
+        "واش": "est-ce que", "ضاعت": "perdu",
+        "متابعة": "suivi", "تقديم": "soumettre",
+        "إغلاق": "clôturer", "مرجع": "référence",
+        "مشكل": "problème", "رد": "réponse",
+    }
+
+    # Keywords → intent mapping (section hint for retrieval boost)
+    INTENT_KEYWORDS: Dict[str, List[str]] = {
+        "submit": [
+            "soumettre", "déposer", "créer", "nouvelle réclamation", "nouveau",
+            "ouvrir", "faire une réclamation", "comment faire", "ndir",
+            "bghit ndir", "submit", "plainte", "chikaya", "شكاية",
+            "envoyer réclamation", "déposer réclamation",
+        ],
+        "track": [
+            "suivre", "suivi", "statut", "état", "avancement", "ma réclamation",
+            "référence", "où en est", "réponse", "délai", "combien de temps",
+            "متابعة", "jawab", "rdoud", "ma réf", "mon numéro",
+        ],
+        "close": [
+            "clôturer", "fermer", "réouvrir", "rouvrir", "clôture",
+            "fermé", "close", "إغلاق", "réouverture", "réactiver",
+        ],
+        "satisfaction": [
+            "satisfaction", "questionnaire", "avis", "évaluation",
+            "noter", "note", "sondage", "enquête",
+        ],
+    }
+
+    SECTION_HINTS = {
+        "submit": "Soumettre une réclamation",
+        "track": "Suivre une réclamation",
+        "close": "Clôturer réouvrir réclamation",
+        "satisfaction": "Questionnaire satisfaction",
+    }
+
+    HALLUCINATION_INDICATORS = [
+        "je pense que", "je crois que", "probablement", "il est possible que",
+        "généralement", "je suppose", "à ma connaissance",
+        "je ne suis pas certain", "il me semble", "d'habitude",
+    ]
+
     def __init__(
         self,
         settings: Optional[Settings] = None,
-        use_mock: bool = False
+        use_mock: bool = False,
     ):
-        """
-        Initialize RAG engine.
-        
-        Args:
-            settings: Configuration settings
-            use_mock: Use mock components for testing
-        """
         self.settings = settings or get_settings()
         self.use_mock = use_mock
         self._llm_client = None
         self._vector_store = None
         self._embedder = None
-        
         logger.info(f"RAGEngine initialized (mock={use_mock})")
-    
+
     @property
     def llm_client(self):
-        """Lazy load LLM client."""
         if self._llm_client is None:
             if self.use_mock:
                 self._llm_client = MockLLMClient()
             else:
                 from openai import OpenAI
+                import httpx
                 default_headers = None
                 if self.settings.llm_provider == "openrouter":
                     default_headers = {}
@@ -97,37 +173,34 @@ Réponds de manière utile :"""
                         default_headers["HTTP-Referer"] = self.settings.openrouter_site_url
                     if self.settings.openrouter_title:
                         default_headers["X-Title"] = self.settings.openrouter_title
-                import httpx
                 self._llm_client = OpenAI(
                     base_url=self.settings.vllm_url,
                     api_key=self.settings.vllm_api_key,
                     default_headers=default_headers,
-                    timeout=httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0)
+                    timeout=httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0),
                 )
         return self._llm_client
-    
+
     @property
     def vector_store(self):
-        """Lazy load vector store."""
         if self._vector_store is None:
             if self.use_mock:
                 from data_ingestion.vector_store import MockVectorStore
                 self._vector_store = MockVectorStore(
                     table_name=self.settings.vector_table,
-                    embedding_dimension=self.settings.embedding_dimension
+                    embedding_dimension=self.settings.embedding_dimension,
                 )
             else:
                 from data_ingestion.vector_store import VectorStore
                 self._vector_store = VectorStore(
                     dsn=self.settings.database_url,
                     table_name=self.settings.vector_table,
-                    embedding_dimension=self.settings.embedding_dimension
+                    embedding_dimension=self.settings.embedding_dimension,
                 )
         return self._vector_store
-    
+
     @property
     def embedder(self):
-        """Lazy load embedder."""
         if self._embedder is None:
             if self.use_mock:
                 from data_ingestion.embedder import MockEmbeddingGenerator
@@ -140,78 +213,103 @@ Réponds de manière utile :"""
                     model_name=self.settings.embedding_model
                 )
         return self._embedder
-    
+
+    # ------------------------------------------------------------------ #
+    #  Pre-processing                                                       #
+    # ------------------------------------------------------------------ #
+
     def _is_greeting(self, text: str) -> bool:
-        """
-        Check if the input text is a greeting.
-
-        Args:
-            text: Input text to check
-
-        Returns:
-            True if the text contains a greeting, False otherwise
-        """
         greeting_keywords = [
             "bonjour", "salut", "hello", "hi", "coucou", "salam", "holla",
             "bonsoir", "good morning", "good afternoon", "good evening",
-            "hey", "yo", "hola"
+            "hey", "yo", "hola", "ahlan", "مرحبا", "السلام",
         ]
+        clean = text.strip().lower()
+        return any(kw in clean for kw in greeting_keywords)
 
-        # Clean and lowercase the text for matching
-        clean_text = text.strip().lower()
+    def _normalize_query(self, question: str) -> str:
+        """
+        Append French equivalents for darija/Arabic tokens so the embedding
+        captures intent even when the user writes in mixed language.
+        """
+        q_lower = question.lower()
+        extras = [french for darija, french in self.DARIJA_MAP.items() if darija in q_lower]
+        if extras:
+            normalized = f"{question} {' '.join(extras)}"
+            logger.info("Query normalized: '%s' → '%s'", question[:80], normalized[:120])
+            return normalized
+        return question
 
-        # Check if any greeting keyword is in the text
-        return any(keyword in clean_text for keyword in greeting_keywords)
+    def _classify_intent(self, question: str) -> Optional[str]:
+        """Return intent name or None, using keyword matching."""
+        q_lower = question.lower()
+        for intent, keywords in self.INTENT_KEYWORDS.items():
+            if any(kw in q_lower for kw in keywords):
+                logger.info("Intent classified: %s", intent)
+                return intent
+        return None
+
+    def _post_validate(self, answer: str, confidence: float) -> bool:
+        """Return False if the answer looks hallucinated or empty."""
+        if len(answer.strip()) < 20:
+            return False
+        answer_lower = answer.lower()
+        for indicator in self.HALLUCINATION_INDICATORS:
+            if indicator in answer_lower:
+                logger.warning("Hallucination indicator detected: '%s'", indicator)
+                return False
+        return True
+
+    # ------------------------------------------------------------------ #
+    #  Main query pipeline                                                  #
+    # ------------------------------------------------------------------ #
 
     def query(self, question: str) -> RAGResponse:
-        """
-        Process a user question through the RAG pipeline.
+        logger.info("Processing query: %s...", question[:100])
 
-        Args:
-            question: User's question
-
-        Returns:
-            RAGResponse with answer and citations
-        """
-        logger.info(f"Processing query: {question[:100]}...")
-
-        # Check if this is a greeting - handle immediately without database search
+        # 0. Greeting fast-path
         if self._is_greeting(question):
             logger.info("Detected greeting, returning conversational response")
-            # Use LLM to generate a natural conversational response in French
-            greeting_prompt = (
-                "You are an AI assistant for ACAPS (Autorité de Contrôle des Assurances et de la Prévoyance Sociale) in Morocco. "
-                "The user has just greeted you. "
-                "Respond politely in French, welcoming them and offering your help with the internal documentation. "
-                "Keep it brief and professional. "
-                f"User greeting: '{question}'"
+            prompt = (
+                "You are the official assistant for the ACAPS portal in Morocco. "
+                "The user has just greeted you. Respond politely in the user's language "
+                "(French, Arabic or Darija), welcome them and offer help with the portal. "
+                f"User message: '{question}'"
             )
-            
-            answer = self._generate_conversational(greeting_prompt)
-            
             return RAGResponse(
-                answer=answer,
+                answer=self._generate_conversational(prompt),
                 citations=[],
                 confidence=1.0,
                 context_used="",
-                metadata={"greeting": True, "model": "conversational-llm"}
+                metadata={"greeting": True, "model": "conversational-llm"},
             )
 
-        # Step 1: Embed the query
-        query_embedding = self.embedder.embed_query(question)
-        
-        # Step 2: Retrieve relevant documents using HYBRID search
-        # This combines semantic search with keyword matching for specific references
+        # 1. Pre-process: normalize darija/mixed language
+        normalized_question = self._normalize_query(question)
+
+        # 2. Intent classification → section hint for retrieval boost
+        intent = self._classify_intent(question)
+        query_text_for_search = normalized_question
+        if intent:
+            hint = self.SECTION_HINTS.get(intent, "")
+            if hint:
+                query_text_for_search = f"{normalized_question} {hint}"
+                logger.info("Search query augmented with hint: '%s'", hint)
+
+        # 3. Embed & retrieve
+        query_embedding = self.embedder.embed_query(normalized_question)
         search_results = self.vector_store.hybrid_search(
             query_embedding=query_embedding,
-            query_text=question,
+            query_text=query_text_for_search,
             top_k=self.settings.top_k_results,
             score_threshold=self.settings.similarity_threshold,
-            keyword_boost=0.3
+            keyword_boost=0.3,
+            file_name=self.PORTAL_FILE,
         )
-        
+
+        # No results → intelligent redirect (not a rejection)
         if not search_results:
-            logger.info("No relevant documents found — falling back to LLM general knowledge")
+            logger.info("No relevant chunks found — redirecting via GENERAL_PROMPT")
             prompt = self.GENERAL_PROMPT.format(question=question)
             answer = self._generate_conversational(prompt)
             return RAGResponse(
@@ -219,41 +317,39 @@ Réponds de manière utile :"""
                 citations=[],
                 confidence=0.0,
                 context_used="",
-                metadata={"retrieval_count": 0, "source": "llm_general_knowledge"}
+                metadata={"retrieval_count": 0, "source": "general_redirect", "intent": intent},
             )
-        
-        # Step 3: Build context from retrieved documents
+
+        # 4. Build context
         context_parts = []
-        citations = []
-        
+        citations: List[Citation] = []
         for result in search_results:
-            context_parts.append(
-                f"[Source: {result.header_path}]\n{result.text}"
-            )
-            
-            # Use full_url if available, otherwise indicate no link
+            context_parts.append(f"[Source: {result.header_path}]\n{result.text}")
             url = result.full_url if result.full_url and not result.full_url.startswith("#") else ""
-            
-            # Longer snippets for better context (400 chars)
-            snippet_length = 400
-            text_snippet = result.text[:snippet_length] + "..." if len(result.text) > snippet_length else result.text
-            
+            snippet = result.text[:400] + "..." if len(result.text) > 400 else result.text
             citations.append(Citation(
                 title=result.header_path,
                 url=url,
                 score=result.score,
-                text_snippet=text_snippet
+                text_snippet=snippet,
             ))
-        
+
         context = "\n\n---\n\n".join(context_parts)
         avg_score = sum(r.score for r in search_results) / len(search_results)
-        
-        # Step 4: Generate answer
+
+        # 5. Generate answer
         prompt = self.SYSTEM_PROMPT.format(context=context, question=question)
         answer = self._generate(prompt, context=context)
-        
-        logger.info(f"Generated answer with {len(citations)} citations")
-        
+
+        # 6. Post-validation: fall back to GENERAL_PROMPT if response looks bad
+        if not self._post_validate(answer, avg_score):
+            logger.warning("Post-validation failed — falling back to GENERAL_PROMPT")
+            fallback_prompt = self.GENERAL_PROMPT.format(question=question)
+            answer = self._generate_conversational(fallback_prompt)
+            citations = []
+
+        logger.info("Generated answer with %d citations (avg_score=%.3f)", len(citations), avg_score)
+
         return RAGResponse(
             answer=answer,
             citations=citations,
@@ -261,25 +357,19 @@ Réponds de manière utile :"""
             context_used=context,
             metadata={
                 "retrieval_count": len(search_results),
-                "top_score": search_results[0].score if search_results else 0,
-                "model": self.settings.vllm_model
-            }
+                "top_score": search_results[0].score,
+                "model": self.settings.vllm_model,
+                "intent": intent,
+            },
         )
-    
+
+    # ------------------------------------------------------------------ #
+    #  LLM helpers                                                          #
+    # ------------------------------------------------------------------ #
+
     def _generate(self, prompt: str, context: str = "") -> str:
-        """
-        Generate response using LLM.
-        
-        Args:
-            prompt: Full prompt with context
-            context: The retrieved context (for fallback response)
-            
-        Returns:
-            Generated text
-        """
         if self.use_mock:
             return self.llm_client.generate(prompt)
-        
         try:
             response = self.llm_client.chat.completions.create(
                 model=self.settings.vllm_model,
@@ -287,135 +377,98 @@ Réponds de manière utile :"""
                     {
                         "role": "system",
                         "content": (
-                            "Tu es un assistant utile et professionnel pour la documentation ACAPS. "
-                            "Analyse la langue de la question fournie dans le message de l'utilisateur et réponds strictement dans cette langue. "
-                            "Si la langue semble ambiguë, privilégie le français. N'introduis pas d'anglais dans une réponse attendue en français."
-                        )
+                            "Tu es un assistant officiel ACAPS. "
+                            "Réponds strictement dans la langue de la question (français, arabe ou darija). "
+                            "N'invente aucune information absente du guide."
+                        ),
                     },
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=self.settings.temperature,
-                max_tokens=self.settings.max_tokens
+                max_tokens=self.settings.max_tokens,
             )
             return response.choices[0].message.content
         except Exception as e:
-            logger.error(f"LLM generation failed: {e}")
-            
-            # Fallback: Return context summary if LLM is unavailable
+            logger.error("LLM generation failed: %s", e)
             if self.settings.llm_fallback_enabled and context:
                 return self._generate_fallback_response(context)
-            
-            return "Je ne peux pas générer une réponse pour le moment car le serveur LLM n'est pas disponible. Veuillez réessayer plus tard ou contacter l'administrateur."
-    
+            return "Je ne peux pas générer une réponse pour le moment. Veuillez réessayer plus tard."
+
+    def _generate_conversational(self, prompt: str) -> str:
+        if self.use_mock:
+            return "Bonjour! Je suis l'assistant ACAPS. Comment puis-je vous aider aujourd'hui?"
+        try:
+            response = self.llm_client.chat.completions.create(
+                model=self.settings.vllm_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Tu es l'assistant officiel du portail ACAPS. "
+                            "Réponds dans la langue de l'utilisateur (français, arabe ou darija). "
+                            "Sois utile, naturel et concis."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                max_tokens=self.settings.max_tokens,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error("Error generating conversational response: %s", e)
+            return "Bonjour! Je suis l'assistant ACAPS. Comment puis-je vous aider ?"
+
     def _generate_fallback_response(self, context: str) -> str:
-        """
-        Generate a fallback response when LLM is unavailable.
-        Returns the retrieved context with a disclaimer.
-        
-        Args:
-            context: The retrieved document context
-            
-        Returns:
-            Formatted fallback response
-        """
-        # Extract the most relevant part (first source)
+        """Return raw context when LLM is unavailable."""
         if "[Source:" in context:
             parts = context.split("---")
             first_source = parts[0].strip() if parts else context[:500]
         else:
             first_source = context[:500]
-        
-        return f"""**Note:** Le serveur LLM n'est pas disponible. Voici les informations trouvées dans les documents:
+        return (
+            "**Note :** Le serveur LLM est temporairement indisponible. "
+            "Voici les informations trouvées dans le guide :\n\n"
+            f"{first_source}\n\n"
+            "*Pour une réponse complète, veuillez réessayer dans quelques instants.*"
+        )
 
-{first_source}
-
-*Pour une réponse plus détaillée, veuillez contacter l'administrateur pour activer le serveur LLM.*"""
-
-    def _generate_conversational(self, prompt: str) -> str:
-        """
-        Generate a conversational response without RAG context.
-        
-        Args:
-            prompt: Prompt for the LLM
-            
-        Returns:
-            Generated text
-        """
-        if self.use_mock:
-            return "Bonjour! Je suis l'assistant AI de l'ACAPS. Comment puis-je vous aider aujourd'hui?"
-            
-        try:
-            response = self.llm_client.chat.completions.create(
-                model=self.settings.vllm_model,
-                messages=[
-                    {"role": "system", "content": "Tu es un assistant utile et professionnel pour l'ACAPS (Autorité de Contrôle des Assurances et de la Prévoyance Sociale). Réponds toujours dans la langue de la question. Si la langue est ambiguë, utilise le français."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=self.settings.max_tokens
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            logger.error(f"Error generating conversational response: {e}")
-            return "Bonjour! Je suis l'assistant ACAPS. Comment puis-je vous aider ?"
-    
     def health_check(self) -> Dict[str, Any]:
-        """Check health of all components."""
-        health = {
-            "vector_store": False,
-            "llm": False,
-            "embedder": False
-        }
-        
+        health = {"vector_store": False, "llm": False, "embedder": False}
         try:
             health["vector_store"] = self.vector_store.health_check()
         except Exception as e:
-            logger.error(f"Vector store health check failed: {e}")
-        
+            logger.error("Vector store health check failed: %s", e)
         try:
-            # Simple embedding test
-            self.embedder.embed_text("test")
+            self.embedder.embed_query("test")
             health["embedder"] = True
         except Exception as e:
-            logger.error(f"Embedder health check failed: {e}")
-        
+            logger.error("Embedder health check failed: %s", e)
         try:
             if self.use_mock:
                 health["llm"] = True
             else:
-                # Test LLM connection
-                response = self.llm_client.models.list()
+                self.llm_client.models.list()
                 health["llm"] = True
         except Exception as e:
-            logger.error(f"LLM health check failed: {e}")
-        
+            logger.error("LLM health check failed: %s", e)
         health["overall"] = all(health.values())
         return health
 
 
 class MockLLMClient:
-    """Mock LLM client for testing."""
-    
     def generate(self, prompt: str) -> str:
-        """Generate a mock response based on the prompt."""
-        if "sick leave" in prompt.lower():
-            return "According to Article 5, employees must inform their supervisor within 24 hours in case of sickness and provide a medical certificate within 48 hours."
-        elif "vacation" in prompt.lower() or "congés" in prompt.lower():
-            return "According to Article 4, each employee is entitled to 22 working days of annual paid leave."
-        elif "working hours" in prompt.lower() or "horaires" in prompt.lower():
-            return "According to Article 3, working hours are Monday to Friday from 8:30 AM to 4:30 PM, with a lunch break from 12:00 PM to 1:00 PM."
-        else:
-            return "Based on the available documentation, the information requested can be found in the relevant sections of the internal regulations."
+        if "réclamation" in prompt.lower() or "soumettre" in prompt.lower():
+            return "Pour soumettre une réclamation, accédez au portail ACAPS et cliquez sur 'Nouvelle réclamation'."
+        return "Basé sur la documentation disponible, veuillez consulter le guide du portail ACAPS."
 
 
-# Singleton instance
+# Singleton
 _engine_instance: Optional[RAGEngine] = None
 
 
 def get_engine(use_mock: bool = False) -> RAGEngine:
-    """Get or create RAG engine instance."""
     global _engine_instance
     if _engine_instance is None:
         _engine_instance = RAGEngine(use_mock=use_mock)
     return _engine_instance
-

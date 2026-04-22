@@ -1,0 +1,175 @@
+=========================================================
+  COMMANDES UTILES — Guide Portail ACAPS Chatbot
+=========================================================
+
+-----------------------------------------------------
+  DÉMARRAGE & ARRÊT
+-----------------------------------------------------
+
+# Démarrer tous les services
+docker compose up -d
+
+# Arrêter tous les services
+docker compose down
+
+# Arrêter et supprimer les volumes (reset complet)
+docker compose down -v
+
+# Redémarrer un service spécifique
+docker compose restart api
+docker compose restart ollama
+
+
+-----------------------------------------------------
+  STATUT & SANTÉ
+-----------------------------------------------------
+
+# État de tous les conteneurs
+docker compose ps
+
+# Santé de l'API
+curl http://localhost:8080/health
+
+# Stats vector store (nombre de chunks indexés)
+curl http://localhost:8080/stats
+
+# Logs en temps réel
+docker compose logs -f
+docker logs atlas-api -f
+docker logs atlas-ollama -f
+docker logs atlas-ui -f
+
+
+-----------------------------------------------------
+  INGESTION DES DOCUMENTS
+-----------------------------------------------------
+
+# ⚠️  IMPORTANT : Attendre que l'API soit "healthy" AVANT de lancer l'ingestion
+#     (le modèle d'embedding se charge au démarrage — env. 1 min)
+#     Vérifier d'abord : docker compose ps
+
+# Réindexer complètement (UNIQUEMENT si dimension embedding changée)
+docker exec atlas-api python -m data_ingestion.pipeline --recreate
+
+# Ingestion incrémentale (après modification du guide)
+docker exec atlas-api python -m data_ingestion.pipeline
+
+# ℹ️  Le modèle d'embedding est mis en cache dans le volume atlas-hf-cache
+#     → Après le 1er téléchargement (~34 MB), les démarrages suivants sont instantanés
+
+
+-----------------------------------------------------
+  TEST DU CHATBOT (API directe)
+-----------------------------------------------------
+
+# Question sur le portail
+curl -X POST http://localhost:8080/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Comment soumettre une réclamation ?"}'
+
+# Question sur le suivi
+curl -X POST http://localhost:8080/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Comment suivre ma réclamation ?"}'
+
+# Déclencher ingestion via API
+curl -X POST http://localhost:8080/ingest
+
+
+-----------------------------------------------------
+  OLLAMA & MODÈLE LLM
+-----------------------------------------------------
+
+# Vérifier le modèle installé
+docker exec atlas-ollama ollama list
+
+# Télécharger un autre modèle (ex: plus petit)
+docker exec atlas-ollama ollama pull qwen2.5:1.5b
+
+# Tester le modèle directement
+docker exec atlas-ollama ollama run qwen2.5:3b "Bonjour"
+
+
+-----------------------------------------------------
+  BASE DE DONNÉES (PostgreSQL)
+-----------------------------------------------------
+
+# Compter les chunks indexés
+docker exec atlas-postgres psql -U atlas -d atlas_rag \
+  -c "SELECT file_name, COUNT(*) FROM atlas_knowledge GROUP BY file_name;"
+
+# Voir les derniers chunks insérés
+docker exec atlas-postgres psql -U atlas -d atlas_rag \
+  -c "SELECT header_path, chunk_index FROM atlas_knowledge ORDER BY chunk_index LIMIT 20;"
+
+# pgAdmin (interface web)
+# http://localhost:5050  |  admin@atlas.com / admin
+
+
+-----------------------------------------------------
+  BUILD & REBUILD DES IMAGES
+-----------------------------------------------------
+
+# Rebuild tous les services
+docker compose build
+
+# Rebuild sans cache (après modif Dockerfile)
+docker compose build --no-cache api
+docker compose build --no-cache ui
+docker compose build --no-cache ollama
+
+# Rebuild + redémarrer
+docker compose up -d --force-recreate api
+docker compose up -d --force-recreate ui
+
+
+-----------------------------------------------------
+  NETTOYAGE DOCKER (libérer de l'espace)
+-----------------------------------------------------
+
+# Supprimer les images inutilisées
+docker image prune -f
+
+# Supprimer images, réseaux, volumes inutilisés
+docker system prune -f
+
+# Voir l'espace utilisé
+docker system df
+
+
+-----------------------------------------------------
+  DÉVELOPPEMENT LOCAL (sans Docker)
+-----------------------------------------------------
+
+# Créer l'environnement virtuel Python
+python -m venv venv
+source venv/bin/activate          # Linux/Mac
+.\venv\Scripts\Activate.ps1       # Windows PowerShell
+
+# Installer les dépendances backend
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r backend_api/requirements.txt
+
+# Lancer l'API en local
+cd backend_api
+uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+
+# Lancer le frontend en local
+cd frontend_ui
+npm install
+npm run dev
+# http://localhost:5173
+
+
+-----------------------------------------------------
+  URLS D'ACCÈS
+-----------------------------------------------------
+
+  Chatbot          →  http://localhost:3000
+  API Swagger      →  http://localhost:8080/docs
+  API Santé        →  http://localhost:8080/health
+  pgAdmin          →  http://localhost:5050
+  Ollama API       →  http://localhost:11434
+
+
+=========================================================

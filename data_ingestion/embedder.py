@@ -1,19 +1,35 @@
 """
 Embedding Generator for Atlas-RAG
-Uses BAAI/bge-m3 for multilingual embeddings.
+Uses AutoTokenizer + AutoModel from transformers for explicit cache control.
 """
+import os
 import logging
 from typing import List, Optional, Union
 from dataclasses import dataclass
 
+import warnings
 import numpy as np
 
+# Suppress noisy deprecation warnings from older huggingface_hub versions
+warnings.filterwarnings("ignore", category=FutureWarning, module="huggingface_hub")
+warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
+
 logger = logging.getLogger(__name__)
+
+# Explicit cache directory — matches docker-compose HF_HOME volume
+_DEFAULT_CACHE_DIR = os.getenv("HF_HOME", "/app/.cache/huggingface")
+
+
+def _mean_pooling(model_output, attention_mask):
+    """Mean pooling over token embeddings, weighted by attention mask."""
+    import torch
+    token_embeddings = model_output[0]  # (batch, seq_len, hidden)
+    mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+    return torch.sum(token_embeddings * mask_expanded, 1) / torch.clamp(mask_expanded.sum(1), min=1e-9)
 
 
 @dataclass
 class EmbeddingResult:
-    """Result of embedding operation."""
     text: str
     embedding: List[float]
     model: str
@@ -22,190 +38,166 @@ class EmbeddingResult:
 
 class EmbeddingGenerator:
     """
-    Generates embeddings using sentence-transformers.
-    Supports BAAI/bge-m3 for multilingual documents.
+    Generates sentence embeddings using AutoTokenizer + AutoModel.
+    Explicit cache_dir so the model is always stored in the persisted Docker volume.
     """
-    
+
     def __init__(
         self,
-        model_name: str = "BAAI/bge-m3",
+        model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         device: Optional[str] = None,
-        normalize: bool = True
+        normalize: bool = True,
+        cache_dir: Optional[str] = None,
     ):
-        """
-        Initialize the embedding generator.
-        
-        Args:
-            model_name: HuggingFace model name
-            device: Device to use ('cpu', 'cuda', or None for auto)
-            normalize: Whether to L2 normalize embeddings
-        """
         self.model_name = model_name
         self.normalize = normalize
-        self._model = None
+        self.cache_dir = cache_dir or _DEFAULT_CACHE_DIR
         self._device = device
-        
-        logger.info(f"Initializing EmbeddingGenerator with model: {model_name}")
-    
+        self._tokenizer = None
+        self._model = None
+
+        logger.info("Initializing EmbeddingGenerator — model: %s  cache: %s", model_name, self.cache_dir)
+
+    def _load(self):
+        """Load tokenizer and model into memory (called once)."""
+        import torch
+        from transformers import AutoTokenizer, AutoModel
+
+        logger.info("Loading model from HuggingFace: %s", self.model_name)
+
+        os.makedirs(self.cache_dir, exist_ok=True)
+
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            self.model_name,
+            cache_dir=self.cache_dir,
+        )
+        self._model = AutoModel.from_pretrained(
+            self.model_name,
+            cache_dir=self.cache_dir,
+        )
+        self._model.eval()
+
+        # Resolve device
+        if self._device is None:
+            self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._model = self._model.to(self._device)
+
+        logger.info("Model loaded on %s. Hidden size: %d", self._device, self._model.config.hidden_size)
+
+    @property
+    def tokenizer(self):
+        if self._tokenizer is None:
+            self._load()
+        return self._tokenizer
+
     @property
     def model(self):
-        """Lazy load the model."""
         if self._model is None:
-            from sentence_transformers import SentenceTransformer
-            
-            logger.info(f"Loading model: {self.model_name}")
-            self._model = SentenceTransformer(
-                self.model_name,
-                device=self._device
-            )
-            logger.info(f"Model loaded. Dimension: {self.dimension}")
+            self._load()
         return self._model
-    
+
     @property
     def dimension(self) -> int:
-        """Get embedding dimension."""
-        return self.model.get_sentence_embedding_dimension()
-    
-    def embed_text(self, text: str) -> EmbeddingResult:
-        """
-        Generate embedding for a single text.
-        
-        Args:
-            text: Text to embed
-            
-        Returns:
-            EmbeddingResult with embedding vector
-        """
-        embedding = self.model.encode(
-            text,
-            normalize_embeddings=self.normalize,
-            show_progress_bar=False
+        return self.model.config.hidden_size
+
+    def _encode_batch(self, texts: List[str]) -> "np.ndarray":
+        """Tokenize, forward-pass, mean-pool, optionally L2-normalize. Returns np array (N, D)."""
+        import torch
+        import torch.nn.functional as F
+
+        encoded = self.tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=512,
+            return_tensors="pt",
         )
-        
+        encoded = {k: v.to(self._device) for k, v in encoded.items()}
+
+        with torch.no_grad():
+            output = self.model(**encoded)
+
+        embeddings = _mean_pooling(output, encoded["attention_mask"])
+
+        if self.normalize:
+            embeddings = F.normalize(embeddings, p=2, dim=1)
+
+        return embeddings.cpu().numpy()
+
+    # ── Public API ────────────────────────────────────────────────────
+
+    def embed_text(self, text: str) -> EmbeddingResult:
+        vec = self._encode_batch([text])[0]
         return EmbeddingResult(
             text=text,
-            embedding=embedding.tolist(),
+            embedding=vec.tolist(),
             model=self.model_name,
-            dimension=len(embedding)
+            dimension=len(vec),
         )
-    
+
     def embed_texts(
         self,
         texts: List[str],
         batch_size: int = 32,
-        show_progress: bool = True
+        show_progress: bool = True,
     ) -> List[EmbeddingResult]:
-        """
-        Generate embeddings for multiple texts.
-        
-        Args:
-            texts: List of texts to embed
-            batch_size: Batch size for processing
-            show_progress: Whether to show progress bar
-            
-        Returns:
-            List of EmbeddingResult objects
-        """
         if not texts:
             return []
-        
-        logger.info(f"Embedding {len(texts)} texts with batch_size={batch_size}")
-        
-        embeddings = self.model.encode(
-            texts,
-            normalize_embeddings=self.normalize,
-            batch_size=batch_size,
-            show_progress_bar=show_progress
-        )
-        
-        results = []
-        for text, embedding in zip(texts, embeddings):
-            results.append(EmbeddingResult(
-                text=text,
-                embedding=embedding.tolist(),
-                model=self.model_name,
-                dimension=len(embedding)
-            ))
-        
+
+        logger.info("Embedding %d texts with batch_size=%d", len(texts), batch_size)
+        results: List[EmbeddingResult] = []
+
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            vecs = self._encode_batch(batch)
+            for text, vec in zip(batch, vecs):
+                results.append(EmbeddingResult(
+                    text=text,
+                    embedding=vec.tolist(),
+                    model=self.model_name,
+                    dimension=len(vec),
+                ))
+            if show_progress:
+                logger.info("  Embedded %d / %d", min(i + batch_size, len(texts)), len(texts))
+
         return results
-    
+
     def embed_query(self, query: str) -> List[float]:
-        """
-        Embed a query for retrieval.
-        For BGE models, prepends instruction for better retrieval.
-        
-        Args:
-            query: Query text
-            
-        Returns:
-            Embedding vector as list of floats
-        """
-        # BGE models work better with instruction prefix for queries
-        if "bge" in self.model_name.lower():
-            query = f"Represent this sentence for searching relevant passages: {query}"
-        
+        """Embed a query for semantic search. Strips BGE instruction prefix if present."""
         return self.embed_text(query).embedding
 
 
 class MockEmbeddingGenerator:
-    """
-    Mock embedding generator for testing.
-    Generates deterministic pseudo-random embeddings.
-    """
-    
-    def __init__(self, dimension: int = 1024, seed: int = 42):
+    """Deterministic mock for unit tests — no network, no GPU."""
+
+    def __init__(self, dimension: int = 384, seed: int = 42):
         self.model_name = "mock-embedding-model"
         self._dimension = dimension
         self._seed = seed
-        logger.info(f"MockEmbeddingGenerator initialized (dim={dimension})")
-    
+        logger.info("MockEmbeddingGenerator initialized (dim=%d)", dimension)
+
     @property
     def dimension(self) -> int:
         return self._dimension
-    
+
     def embed_text(self, text: str) -> EmbeddingResult:
-        """Generate deterministic embedding based on text hash."""
         np.random.seed(hash(text) % (2**32))
-        embedding = np.random.randn(self._dimension)
-        # Normalize
-        embedding = embedding / np.linalg.norm(embedding)
-        
-        return EmbeddingResult(
-            text=text,
-            embedding=embedding.tolist(),
-            model=self.model_name,
-            dimension=self._dimension
-        )
-    
-    def embed_texts(
-        self,
-        texts: List[str],
-        batch_size: int = 32,
-        show_progress: bool = True
-    ) -> List[EmbeddingResult]:
-        return [self.embed_text(text) for text in texts]
-    
+        vec = np.random.randn(self._dimension)
+        vec = vec / np.linalg.norm(vec)
+        return EmbeddingResult(text=text, embedding=vec.tolist(), model=self.model_name, dimension=self._dimension)
+
+    def embed_texts(self, texts: List[str], batch_size: int = 32, show_progress: bool = True) -> List[EmbeddingResult]:
+        return [self.embed_text(t) for t in texts]
+
     def embed_query(self, query: str) -> List[float]:
         return self.embed_text(query).embedding
 
 
 def get_embedding_generator(
-    model_name: str = "BAAI/bge-m3",
+    model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
     use_mock: bool = False,
-    dimension: int = 1024
+    dimension: int = 384,
 ) -> Union[EmbeddingGenerator, MockEmbeddingGenerator]:
-    """
-    Factory function to get embedding generator.
-    
-    Args:
-        model_name: Model name for real generator
-        use_mock: Whether to use mock generator (for testing)
-        dimension: Dimension for mock generator
-        
-    Returns:
-        Embedding generator instance
-    """
     if use_mock:
         return MockEmbeddingGenerator(dimension=dimension)
     return EmbeddingGenerator(model_name=model_name)
-

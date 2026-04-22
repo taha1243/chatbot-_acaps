@@ -10,7 +10,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+# CPU-only PyTorch (~220 MB) instead of the 6 GB CUDA default
+RUN pip install --no-cache-dir --prefix=/install \
+    --index-url https://download.pytorch.org/whl/cpu \
+    "torch>=2.0,<2.5"
 RUN pip install --no-cache-dir --timeout=600 --retries=5 \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
     --prefix=/install -r requirements.txt
 
 # Stage 2 : image finale légère
@@ -25,8 +30,8 @@ COPY --from=builder /install /usr/local
 
 COPY . .
 
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
-USER appuser
+# Create cache directory with open permissions so both API (root) and docker exec work
+RUN mkdir -p /app/.cache/huggingface && chmod 777 /app/.cache/huggingface
 
 EXPOSE 8080
 

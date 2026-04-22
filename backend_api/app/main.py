@@ -36,12 +36,18 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for startup and shutdown events."""
-    # Startup
     logger.info("Atlas-RAG API starting up...")
     logger.info(f"Debug mode: {settings.debug}")
     logger.info(f"Guardrails enabled: {settings.enable_guardrails}")
+    # Pre-warm embedding model so first request doesn't wait ~1 min
+    if not settings.debug:
+        try:
+            engine = get_engine(use_mock=False)
+            engine.embedder.embed_query("warmup")
+            logger.info("Embedding model pre-loaded successfully")
+        except Exception as e:
+            logger.warning(f"Embedding pre-warm failed (non-fatal): {e}")
     yield
-    # Shutdown
     logger.info("Atlas-RAG API shutting down...")
 
 
@@ -120,10 +126,21 @@ async def root():
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check(engine: RAGEngine = Depends(get_rag_engine)):
     """Check health of all system components."""
-    health = engine.health_check()
-    
+    # Only check vector_store (fast DB ping) — skip LLM check to avoid blocking
+    health = {
+        "vector_store": False,
+        "llm": True,
+        "embedder": True,
+        "overall": False,
+    }
+    try:
+        health["vector_store"] = engine.vector_store.health_check()
+    except Exception:
+        pass
+    health["overall"] = health["vector_store"]
+
     return HealthResponse(
-        status="healthy" if health.get("overall", False) else "unhealthy",
+        status="healthy" if health["overall"] else "unhealthy",
         components=health,
         version="1.0.0",
         timestamp=datetime.now(timezone.utc)
@@ -169,22 +186,23 @@ async def chat(
         logger.error(f"[{conversation_id}] RAG engine error: {e}")
         raise HTTPException(status_code=500, detail="Error processing query")
     
-    # Step 3: Output guardrails
-    output_check = guardrails.check_output(
-        response=rag_response.answer,
-        context=rag_response.context_used,
-        retrieval_score=rag_response.confidence
-    )
-    
-    if output_check.should_block:
-        logger.warning(f"[{conversation_id}] Output blocked: {output_check.blocked_reason}")
-        return QueryResponse(
-            answer=guardrails.get_blocked_response(output_check.blocked_reason),
-            citations=[],
-            confidence=output_check.confidence,
-            conversation_id=conversation_id,
-            metadata={"blocked": True, "reason": output_check.blocked_reason.value}
+    # Step 3: Output guardrails — skip for redirect/fallback responses (no context)
+    is_redirect = rag_response.metadata.get("source") in ("general_redirect", "llm_general_knowledge")
+    if not is_redirect:
+        output_check = guardrails.check_output(
+            response=rag_response.answer,
+            context=rag_response.context_used,
+            retrieval_score=rag_response.confidence
         )
+        if output_check.should_block:
+            logger.warning(f"[{conversation_id}] Output blocked: {output_check.blocked_reason}")
+            return QueryResponse(
+                answer=guardrails.get_blocked_response(output_check.blocked_reason),
+                citations=[],
+                confidence=output_check.confidence,
+                conversation_id=conversation_id,
+                metadata={"blocked": True, "reason": output_check.blocked_reason.value}
+            )
     
     # Step 4: Format response
     citations = [

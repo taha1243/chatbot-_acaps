@@ -13,8 +13,9 @@ openai==1.12.0
 # PostgreSQL + pgvector
 psycopg[binary]==3.2.1
 
-# Embeddings
-sentence-transformers==2.3.1
+# Embeddings — transformers directly (explicit cache_dir, no SentenceTransformer wrapper)
+transformers==4.40.2
+tokenizers>=0.19.0
 
 # Markdown parsing
 python-frontmatter==1.1.0

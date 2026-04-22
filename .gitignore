@@ -44,3 +44,6 @@ Thumbs.db
 
 node_modules/
 .cursorrules
+.claude/scheduled_tasks.lock
+*.lock
+*.md

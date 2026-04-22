@@ -1,760 +1,416 @@
-# Atlas-RAG: ACAPS Documentation Assistant
+# Guide Portail ACAPS — Chatbot RAG
 
-A **Retrieval-Augmented Generation (RAG)** chatbot system designed for ACAPS (Autorité de Contrôle des Assurances et de la Prévoyance Sociale) internal documentation. The system provides accurate, citation-backed answers from internal documents with a **Zero Hallucination** policy.
+> Assistant conversationnel basé sur la **Génération Augmentée par Récupération (RAG)** pour guider les utilisateurs du portail de l'ACAPS (Autorité de Contrôle des Assurances et de la Prévoyance Sociale).
 
-![Architecture](https://img.shields.io/badge/Architecture-Microservices-blue)
-![Python](https://img.shields.io/badge/Python-3.12-green)
-![License](https://img.shields.io/badge/License-Internal-red)
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.109-green)
+![React](https://img.shields.io/badge/React-18-61DAFB)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED)
+![License](https://img.shields.io/badge/Usage-Interne_ACAPS-red)
 
 ---
 
-## Table of Contents
+## Sommaire
 
-1. [Overview](#overview)
+1. [Présentation](#présentation)
 2. [Architecture](#architecture)
-3. [Quick Start](#quick-start)
-4. [Installation](#installation)
-5. [Configuration](#configuration)
-6. [Running the Application](#running-the-application)
-7. [Data Ingestion](#data-ingestion)
-8. [Module Reference](#module-reference)
-9. [API Reference](#api-reference)
-10. [Customization Guide](#customization-guide)
-11. [Testing](#testing)
-12. [Troubleshooting](#troubleshooting)
+3. [Démarrage rapide](#démarrage-rapide)
+4. [Services Docker](#services-docker)
+5. [Variables d'environnement](#variables-denvironnement)
+6. [Pipeline d'ingestion](#pipeline-dingestion)
+7. [API REST](#api-rest)
+8. [Structure du projet](#structure-du-projet)
+9. [Tests](#tests)
+10. [Dépannage](#dépannage)
 
 ---
 
-## Overview
+## Présentation
 
-Atlas-RAG is a RAG-based chatbot that:
+Le chatbot guide les utilisateurs du portail ACAPS sur les opérations suivantes :
 
-- **Answers questions** based ONLY on ingested documents (Zero Hallucination)
-- **Provides citations** with links to source documents
-- **Supports French and English** queries
-- **Includes guardrails** against jailbreaks, toxicity, and off-topic queries
-- **Handles greetings** conversationally without database lookup
+| Section | Contenu |
+|---------|---------|
+| **Soumettre une réclamation** | Processus en 6 étapes (Assurance, Prévoyance, Retraite, Mutuelle) |
+| **Suivre une réclamation** | Consultation timeline, messages, pièces jointes |
+| **Clôture / Réouverture** | Délais, conditions, statuts |
+| **Questionnaire de satisfaction** | Évaluation du traitement |
 
-### Key Features
+### Fonctionnalités clés
 
-| Feature | Description |
-|---------|-------------|
-| **Multilingual Embeddings** | BAAI/bge-m3 model for French/English/Arabic support |
-| **Vector Search** | Qdrant for fast similarity search |
-| **LLM Generation** | Qwen2.5-7B via vLLM for response generation |
-| **Guardrails** | Input/output validation to prevent misuse |
-| **Smart Ingestion** | Only re-indexes changed/new files |
-| **Citation Links** | Deterministic URL generation for sources |
+- **RAG ciblé** : recherche uniquement dans `guide_portal_acaps.md`
+- **Réponses structurées** : instructions étape par étape avec sources citées
+- **LLM local** : Qwen2.5:3b via Ollama — aucune donnée ne quitte le serveur
+- **Multilingue** : français / arabe standard / darija marocaine (arabe + translittération latine)
+- **Normalisation darija** : mapping automatique darija → français pour améliorer le retrieval
+- **Classification d'intention** : détection submit / track / close / satisfaction pour boost contextuel
+- **Cache modèle persistant** : volume Docker `atlas-hf-cache`, téléchargement unique (~34 MB)
+- **Interface moderne** : design palette officielle ACAPS
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Frontend (React)                         │
-│                    http://localhost:3000                         │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ HTTP
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Backend API (FastAPI)                       │
-│                    http://localhost:8080                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ Guardrails  │  │ RAG Engine  │  │ Conversational Router   │  │
-│  └─────────────┘  └──────┬──────┘  └─────────────────────────┘  │
-└──────────────────────────┼──────────────────────────────────────┘
-                           │
-          ┌────────────────┼────────────────┐
-          │                │                │
-          ▼                ▼                ▼
-┌─────────────────┐ ┌─────────────┐ ┌─────────────────┐
-│  pgvector Vector  │ │   vLLM      │ │  BGE-M3         │
-│    Database     │ │  Inference  │ │  Embeddings     │
-│  :6333          │ │  :8000      │ │  (local)        │
-└─────────────────┘ └─────────────┘ └─────────────────┘
+┌─────────────────────────────────────────────────────┐
+│              Navigateur  :3000                       │
+│              React + Nginx                           │
+└────────────────────┬────────────────────────────────┘
+                     │  /api/*  (proxy)
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│              Backend API  :8080                      │
+│              FastAPI + Uvicorn                       │
+│                                                      │
+│  [Guardrails] → [Greeting] → [Normalize+Intent]     │
+│                                  ↓                   │
+│                   [Embedding MiniLM-L12 384-dim]     │
+│                                  ↓                   │
+│                        [VectorStore pgvector]        │
+│                          (guide_portal_acaps.md)     │
+│                                  ↓                   │
+│                        [LLMClient → Ollama]          │
+└──────────────┬──────────────────────┬───────────────┘
+               │                      │
+               ▼                      ▼
+┌─────────────────────┐  ┌──────────────────────────┐
+│  PostgreSQL :5432   │  │  Ollama  :11434           │
+│  + pgvector         │  │  qwen2.5:3b (1.9 GB)      │
+│  atlas_knowledge    │  │  KEEP_ALIVE=-1            │
+└─────────────────────┘  └──────────────────────────┘
 ```
 
-### Data Flow
+### Flux d'une requête
 
-1. **User Query** → Frontend sends question to Backend API
-2. **Input Guardrails** → Check for jailbreaks, toxicity, off-topic
-3. **Greeting Detection** → If greeting, respond conversationally (skip RAG)
-4. **Query Embedding** → BGE-M3 embeds the question
-5. **Vector Search** → Qdrant finds similar document chunks
-6. **Context Assembly** → Top-K results assembled as context
-7. **LLM Generation** → Qwen generates answer from context
-8. **Output Guardrails** → Check for hallucinations
-9. **Response** → Answer + citations returned to user
+```
+Question utilisateur
+      │
+      ▼
+[InputGuardrails]  ──→ BLOQUÉ si jailbreak / hors-sujet
+      │
+      ▼
+[Greeting?]  ──→ OUI : réponse conversationnelle directe
+      │
+      ▼
+[normalize_query()]  darija → français (DARIJA_MAP 30+ entrées)
+      │
+      ▼
+[classify_intent()]  submit / track / close / satisfaction
+      │  → section hint ajouté à la requête de recherche
+      ▼
+[embed_query()]  MiniLM-L12 → vecteur 384 dimensions
+      │
+      ▼
+[hybrid_search()]  semantic + keyword boost (pg_trgm), TOP_K=3
+      │
+      ▼
+[LLM qwen2.5:3b]  prompt ciblé portail, MAX_TOKENS=512
+      │
+      ▼
+[QueryResponse]  answer + citations + confidence score
+```
 
 ---
 
-## Quick Start
+## Démarrage rapide
 
-### Prerequisites
+### Prérequis
 
-- **Docker** and **Docker Compose** (for containerized deployment)
-- **Python 3.12+** (for local development)
-- **Node.js 18+** (for frontend development)
-- **NVIDIA GPU** with CUDA (for vLLM inference server)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) ≥ 4.x
+- RAM disponible ≥ 3 GB (le modèle Ollama utilise ~2 GB)
+- Connexion internet (premier lancement uniquement — téléchargement des modèles)
 
-### One-Command Start (Docker)
-
-```bash
-# Clone and start all services
-docker-compose up -d
-
-# Ingest documents
-docker exec atlas-api python -m data_ingestion.pipeline --recreate
-
-# Access the UI
-open http://localhost:3000
-```
-
----
-
-## Installation
-
-### Option 1: Docker Compose (Recommended)
+### Lancement
 
 ```bash
-# Copy environment file
+# 1. Copier la configuration
 cp env.example .env
 
-# Edit .env with your configuration
-nano .env
+# 2. Démarrer tous les services
+docker compose up -d
 
-# Start all services
-docker-compose up -d
+# 3. Attendre qu'Ollama télécharge et charge qwen2.5:3b (~5 min)
+docker logs atlas-ollama -f
+#    ✓  Modèle chargé en RAM
+
+# 4. Attendre que l'API pre-warm le modèle d'embedding (~1 min)
+docker logs atlas-api -f
+#    ✓  Embedding model pre-loaded successfully
+
+# 5. Indexer le guide portail
+docker exec atlas-api python -m data_ingestion.pipeline --recreate
+
+# 6. Ouvrir l'interface
+# http://localhost:3000
 ```
 
-### Option 2: Local Development
+> **Note :** Le premier démarrage télécharge qwen2.5:3b (1.9 GB) et le modèle d'embedding (~34 MB).  
+> Les démarrages suivants sont instantanés — tout est mis en cache dans les volumes Docker (`ollama_data`, `atlas-hf-cache`).
 
-```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate (Windows PowerShell)
-.\venv\Scripts\Activate.ps1
-
-# Activate (Linux/Mac)
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start Qdrant (Docker)
-docker run -d -p 6333:6333 -p 6334:6334 qdrant/qdrant:latest
-
-# Start vLLM (requires GPU)
-docker run -d --gpus all -p 8000:8000 vllm/vllm-openai:latest \
-  --model Qwen/Qwen2.5-7B-Instruct --api-key secret
-
-# Start Backend API
-python -m uvicorn backend_api.app.main:app --host 0.0.0.0 --port 8080
-
-# Start Frontend (separate terminal)
-cd frontend_ui
-npm install
-npm run dev
-```
+> **Important :** Lancer l'ingestion (étape 5) uniquement après que l'API affiche "pre-loaded successfully".  
+> Lancer les deux simultanément provoquerait un conflit de téléchargement du modèle d'embedding.
 
 ---
 
-## Configuration
+## Services Docker
 
-### Environment Variables
+| Service | Image | Port | Rôle |
+|---------|-------|------|------|
+| `postgres` | pgvector/pgvector:pg16 | 5432 | Base vectorielle |
+| `pgadmin` | dpage/pgadmin4:8.10 | 5050 | Administration BDD |
+| `ollama` | build: ./ollama | 11434 | LLM local (qwen2.5:3b) |
+| `api` | build: ./backend_api | 8080 | Backend FastAPI |
+| `ui` | build: ./frontend_ui | 3000 | Interface React + Nginx |
 
-Create a `.env` file from `env.example`:
+**Accès :**
 
-```bash
-# vLLM Inference Server
-VLLM_URL=http://localhost:8000/v1
-VLLM_API_KEY=secret
-VLLM_MODEL=Qwen/Qwen2.5-7B-Instruct
-
-# Qdrant Vector Database
-QDRANT_URL=http://localhost:6333
-QDRANT_COLLECTION=atlas_knowledge
-
-# Embedding Model
-EMBEDDING_MODEL=BAAI/bge-m3
-EMBEDDING_DIMENSION=1024
-
-# RAG Configuration
-SIMILARITY_THRESHOLD=0.40    # BGE-M3 scores are typically 0.4-0.7
-TOP_K_RESULTS=5
-MAX_CONTEXT_LENGTH=8192
-
-# Generation Settings
-TEMPERATURE=0.0              # 0 = deterministic, no creativity
-
-# Security
-ENABLE_GUARDRAILS=true
-LOG_LEVEL=INFO
-DEBUG=false
-```
-
-### Key Configuration Notes
-
-| Parameter | Default | Notes |
-|-----------|---------|-------|
-| `SIMILARITY_THRESHOLD` | 0.40 | BGE-M3 produces scores in 0.4-0.7 range. Don't set above 0.5 |
-| `TEMPERATURE` | 0.0 | Keep at 0 for factual, deterministic answers |
-| `TOP_K_RESULTS` | 5 | Number of document chunks to retrieve |
-| `ENABLE_GUARDRAILS` | true | Disable only for testing |
+| Interface | URL | Identifiants |
+|-----------|-----|-------------|
+| Chatbot | http://localhost:3000 | — |
+| API docs (Swagger) | http://localhost:8080/docs | — |
+| pgAdmin | http://localhost:5050 | admin@atlas.com / admin |
+| Santé API | http://localhost:8080/health | — |
 
 ---
 
-## Running the Application
+## Variables d'environnement
 
-### Start Services
-
-```bash
-# Start all services (Docker)
-docker-compose up -d
-
-# Check service health
-docker-compose ps
-
-# View logs
-docker-compose logs -f api
-```
-
-### Service URLs
-
-| Service | URL | Description |
-|---------|-----|-------------|
-| Frontend UI | http://localhost:3000 | Chat interface |
-| Backend API | http://localhost:8080 | REST API |
-| API Docs | http://localhost:8080/docs | Swagger UI |
-| Qdrant UI | http://localhost:6333/dashboard | Vector DB dashboard |
-| vLLM | http://localhost:8000 | LLM inference |
-
----
-
-## LLM Options
-
-Atlas-RAG supports multiple LLM backends:
-
-### Option 1: OpenRouter (Hosted API)
-
-OpenRouter provides a hosted OpenAI-compatible API that aggregates multiple LLM providers.
+Fichier `.env` (copie de `env.example`) :
 
 ```bash
-# 1. Create an account and generate an API key at https://openrouter.ai
-# 2. Export your key (recommended)
-setx OPENROUTER_API_KEY "sk-or-xxxxx"          # Windows PowerShell
-export OPENROUTER_API_KEY="sk-or-xxxxx"       # macOS / Linux
-
-# 3. Optional headers for rankings (replace with your site info)
-setx OPENROUTER_SITE_URL "https://your-app.example.com"
-setx OPENROUTER_TITLE "Atlas-RAG"
-
-# 4. Update .env
-VLLM_URL=https://openrouter.ai/api/v1
-VLLM_API_KEY=${OPENROUTER_API_KEY}
-VLLM_MODEL=openai/gpt-4o
-LLM_PROVIDER=openrouter
-OPENROUTER_SITE_URL=${OPENROUTER_SITE_URL}
-OPENROUTER_TITLE=${OPENROUTER_TITLE}
-```
-
-### Option 2: Ollama (CPU-friendly local runtime)
-
-Ollama runs LLMs locally without requiring a GPU (though slower). Uncomment the Ollama block in `.env` if you prefer this setup.
-
-```bash
-# Install Ollama (https://ollama.ai)
-# Windows: Download installer from website
-
-# Pull the model
-ollama pull qwen2.5:7b
-
-# Verify it's running
-curl http://localhost:11434/api/tags
-```
-
-**Configuration:**
-```bash
-VLLM_URL=http://localhost:11434/v1
+# LLM
+VLLM_MODEL=qwen2.5:3b
+VLLM_URL=http://ollama:11434/v1
 VLLM_API_KEY=ollama
-VLLM_MODEL=qwen2.5:7b
 LLM_PROVIDER=ollama
+
+# Base de données
+DATABASE_URL=postgresql://atlas:atlas@postgres:5432/atlas_rag
+POSTGRES_DB=atlas_rag
+POSTGRES_USER=atlas
+POSTGRES_PASSWORD=atlas
+
+# Embedding (AutoTokenizer + AutoModel via transformers)
+EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+EMBEDDING_DIMENSION=384
+
+# RAG
+SIMILARITY_THRESHOLD=0.40
+TOP_K_RESULTS=3
+MAX_TOKENS=512
+TEMPERATURE=0.0
+
+# Sécurité
+ENABLE_GUARDRAILS=true
 ```
 
-### Option 3: vLLM (Requires NVIDIA GPU)
+**Changer de LLM provider :**
 
-```bash
-# Start vLLM container (requires NVIDIA GPU + Docker)
-docker run -d --gpus all -p 8000:8000 vllm/vllm-openai:latest \
-  --model Qwen/Qwen2.5-7B-Instruct --api-key secret
-```
-
-### Option 4: OpenAI API
-
-```bash
-VLLM_URL=https://api.openai.com/v1
-VLLM_API_KEY=sk-your-api-key
-VLLM_MODEL=gpt-4o-mini
-```
-
-### Fallback Mode
-
-If no LLM is available, the system returns retrieved document context with a disclaimer.
+| Provider | VLLM_URL | LLM_PROVIDER |
+|----------|----------|--------------|
+| Ollama (défaut) | `http://ollama:11434/v1` | `ollama` |
+| OpenRouter | `https://openrouter.ai/api/v1` | `openrouter` |
+| OpenAI | `https://api.openai.com/v1` | `openai` |
 
 ---
 
-## Data Ingestion
+## Pipeline d'ingestion
 
-### Document Format
+Les documents sources sont des fichiers Markdown dans `data_ingestion/documents/`.
 
-Documents must be **Markdown files** with YAML frontmatter:
+**Document actif :**
+- `guide_portal_acaps.md` — Guide officiel d'utilisation du portail (17 chunks)
+
+### Format attendu
 
 ```markdown
 ---
-title: Document Title
-base_url: https://portal.acaps.ma/docs/example
+title: Guide d'Utilisation du Portail ACAPS
+version: 1.0
 ---
 
-# Main Heading
+# Section 1 – Titre
 
-Introduction paragraph.
-
-## Section 1
-
-Content of section 1.
-
-### Subsection 1.1
-
-Detailed content...
+## Étape 1
+- Instruction A
+- Instruction B
 ```
 
-### Ingestion Commands
+### Commandes d'ingestion
 
 ```bash
-# Ingest all documents (skip unchanged files)
-python -m data_ingestion.pipeline
+# Réindexer complètement (recommandé après modification du guide ou changement de dimension)
+docker exec atlas-api python -m data_ingestion.pipeline --recreate
 
-# Force re-ingest all documents
-python -m data_ingestion.pipeline --recreate
-
-# Ingest a single file
-python -m data_ingestion.pipeline --file data_ingestion/documents/new_doc.md
-
-# Ingest from custom directory
-python -m data_ingestion.pipeline --source-dir /path/to/docs
-
-# Check pipeline status
-python -m data_ingestion.pipeline --status
-
-# Verbose output
-python -m data_ingestion.pipeline -v
-```
-
-### Ingestion Flow
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Markdown   │────▶│    Parser    │────▶│   Embedder   │────▶│    Qdrant    │
-│    Files     │     │  (Chunking)  │     │   (BGE-M3)   │     │   (Upsert)   │
-└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
-                            │
-                            ▼
-                    ┌──────────────┐
-                    │  Check if    │
-                    │ file changed │
-                    │  (mtime)     │
-                    └──────────────┘
-```
-
-### Smart Ingestion Features
-
-- **Skip unchanged files**: Compares file modification time with stored timestamp
-- **Detect updates**: Re-indexes files that have been modified
-- **Header inclusion**: Embeds `header_path + text` for better retrieval
-- **Incremental updates**: Use `process_single_file()` for single file updates
-
----
-
-## File Watcher Service
-
-The File Watcher automatically re-indexes documents when they are created, modified, or deleted.
-
-### Start the File Watcher
-
-```bash
-# Watch the default documents directory
-python -m data_ingestion.file_watcher
-
-# Watch a custom directory
-python -m data_ingestion.file_watcher --watch-dir /path/to/docs
-
-# With custom debounce time (seconds)
-python -m data_ingestion.file_watcher --debounce 5.0
-
-# Verbose output
-python -m data_ingestion.file_watcher -v
-```
-
-### How It Works
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    File Watcher Service                       │
-│                                                               │
-│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐    │
-│  │  Watchdog   │────▶│  Debounce   │────▶│  Pipeline   │    │
-│  │  Observer   │     │  (2 sec)    │     │  Ingestion  │    │
-│  └─────────────┘     └─────────────┘     └─────────────┘    │
-│         │                                       │            │
-│         │ File Events                           │ Upsert     │
-│         ▼                                       ▼            │
-│  ┌─────────────┐                        ┌─────────────┐     │
-│  │  Documents  │                        │   Qdrant    │     │
-│  │  Directory  │                        │   Vector DB │     │
-│  └─────────────┘                        └─────────────┘     │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### Events Handled
-
-| Event | Action |
-|-------|--------|
-| File Created | Parse + Embed + Upsert new document |
-| File Modified | Delete old vectors + Re-index |
-| File Deleted | Remove vectors from Qdrant |
-| File Moved | Delete old + Index at new location |
-
-### Run as Background Service
-
-```bash
-# Windows (PowerShell)
-Start-Process -NoNewWindow python -ArgumentList "-m", "data_ingestion.file_watcher"
-
-# Linux/Mac
-nohup python -m data_ingestion.file_watcher > watcher.log 2>&1 &
+# Ingestion incrémentale (seulement les fichiers modifiés)
+docker exec atlas-api python -m data_ingestion.pipeline
 ```
 
 ---
 
-## Module Reference
+## API REST
 
-### 1. Data Ingestion (`data_ingestion/`)
+### `POST /chat`
 
-| File | Purpose |
-|------|---------|
-| `parser.py` | Parses Markdown with YAML frontmatter, splits by headers |
-| `embedder.py` | Generates embeddings using BGE-M3 model |
-| `vector_store.py` | Qdrant operations: upsert, search, delete |
-| `pipeline.py` | Orchestrates the full ingestion flow |
-| `config.py` | Ingestion configuration |
-
-### 2. Backend API (`backend_api/app/`)
-
-| File | Purpose |
-|------|---------|
-| `main.py` | FastAPI application, endpoints |
-| `engine.py` | RAG engine: retrieval + generation |
-| `models.py` | Pydantic request/response models |
-| `config.py` | API configuration (pydantic-settings) |
-| `guardrails/` | Input/output validation |
-
-### 3. Frontend UI (`frontend_ui/`)
-
-| File | Purpose |
-|------|---------|
-| `src/App.tsx` | Main React application |
-| `src/index.css` | Tailwind CSS styles |
-| `vite.config.ts` | Vite build configuration |
-
----
-
-## API Reference
-
-### POST `/chat`
-
-Send a question and receive an answer with citations.
-
-**Request:**
 ```json
+// Requête
 {
-  "question": "Quelles sont les conditions pour l'autorisation d'exercice?",
-  "conversation_id": "optional-uuid"
+  "question": "Comment soumettre une réclamation ?",
+  "conversation_id": "uuid-optionnel"
 }
-```
 
-**Response:**
-```json
+// Réponse
 {
-  "answer": "Selon l'Article 5, les conditions sont...",
+  "answer": "Pour soumettre une réclamation, suivez les étapes suivantes...",
   "citations": [
     {
-      "title": "Article 5 - Autorisation d'Exercice",
-      "url": "https://portal.acaps.ma/legal/loi-assurance#article-5",
-      "score": 0.66,
-      "snippet": "Toute entreprise souhaitant exercer..."
+      "title": "Section 1 – Soumettre une Réclamation > Étape 1",
+      "url": "",
+      "score": 0.57,
+      "snippet": "Saisissez votre nom et prénom..."
     }
   ],
-  "confidence": 0.66,
+  "confidence": 0.57,
   "conversation_id": "uuid",
-  "metadata": {
-    "retrieval_count": 5,
-    "model": "Qwen/Qwen2.5-7B-Instruct"
-  }
+  "metadata": { "retrieval_count": 3, "model": "qwen2.5:3b", "intent": "submit" }
 }
 ```
 
-### GET `/health`
+### Autres endpoints
 
-Check system health.
-
-### POST `/ingest`
-
-Trigger document ingestion (admin endpoint).
-
-### GET `/stats`
-
-Get vector store statistics.
+| Méthode | Route | Description |
+|---------|-------|-------------|
+| `GET` | `/health` | Santé des composants |
+| `GET` | `/stats` | Statistiques vector store |
+| `POST` | `/ingest` | Déclencher ingestion |
+| `POST` | `/feedback` | Feedback utilisateur |
 
 ---
 
-## Customization Guide
-
-### Changing the Embedding Model
-
-Edit `backend_api/app/config.py` and `data_ingestion/config.py`:
-
-```python
-# For a different model
-embedding_model: str = "intfloat/multilingual-e5-large"
-embedding_dimension: int = 1024  # Check model's dimension
-```
-
-**Note:** After changing the model, you MUST re-ingest all documents:
-```bash
-python -m data_ingestion.pipeline --recreate
-```
-
-### Changing the LLM
-
-Edit `docker-compose.yml` or `.env`:
-
-```yaml
-# In docker-compose.yml
-command: >
-  --model mistralai/Mistral-7B-Instruct-v0.2
-  --api-key ${VLLM_API_KEY:-secret}
-```
-
-### Adding New Document Types
-
-Edit `data_ingestion/parser.py` to support new formats:
-
-```python
-class PDFParser:
-    """Parser for PDF documents."""
-    
-    def parse_file(self, file_path: str) -> List[DocumentChunk]:
-        # Implement PDF parsing
-        pass
-```
-
-### Customizing Guardrails
-
-Edit `backend_api/app/guardrails/guardrails.py`:
-
-```python
-# Add new jailbreak patterns
-JAILBREAK_PATTERNS = [
-    r"ignore.*instructions",
-    r"your_new_pattern_here",
-]
-
-# Add domain-specific off-topic patterns
-OFF_TOPIC_PATTERNS = [
-    r"(?:what's|what is).*weather",
-    r"your_new_pattern_here",
-]
-```
-
-### Customizing the Conversational Router
-
-Edit `backend_api/app/engine.py`:
-
-```python
-def _is_greeting(self, text: str) -> bool:
-    greeting_keywords = [
-        "bonjour", "salut", "hello", "hi",
-        # Add more greetings
-        "marhaba", "ahlan",
-    ]
-    return any(keyword in text.lower() for keyword in greeting_keywords)
-```
-
-### Adjusting Retrieval Quality
-
-1. **Lower threshold** for more results (may include less relevant):
-   ```
-   SIMILARITY_THRESHOLD=0.35
-   ```
-
-2. **Increase top_k** for more context:
-   ```
-   TOP_K_RESULTS=10
-   ```
-
-3. **Add reranking** (if enabled):
-   ```
-   USE_RERANKER=true
-   RERANKER_MODEL=BAAI/bge-reranker-v2-m3
-   ```
-
----
-
-## Testing
-
-### Run All Tests
-
-```bash
-# Run all tests
-python -m pytest tests/ -v
-
-# Run with coverage
-python -m pytest tests/ -v --cov=backend_api --cov=data_ingestion
-
-# Run specific test file
-python -m pytest tests/test_backend_api.py -v
-
-# Run tests matching pattern
-python -m pytest tests/ -k "mock" -v
-```
-
-### Test Categories
-
-| Test File | Coverage |
-|-----------|----------|
-| `test_data_ingestion.py` | Parser, Embedder, VectorStore, Pipeline |
-| `test_backend_api.py` | RAG Engine, API endpoints |
-| `test_guardrails.py` | Input/Output validation |
-
-### Manual Testing
-
-```bash
-# Test RAG with real Qdrant (no vLLM needed)
-python test_rag_real.py
-
-# Test Qdrant directly
-python test_qdrant_direct.py
-```
-
----
-
-## Troubleshooting
-
-### "I cannot find relevant information"
-
-**Cause:** Similarity threshold too high or documents not ingested.
-
-**Fix:**
-1. Check Qdrant has documents: http://localhost:6333/dashboard
-2. Lower `SIMILARITY_THRESHOLD` to 0.35-0.40
-3. Re-ingest with `--recreate` flag
-
-### "Article 5 not found" but document exists
-
-**Cause:** Generic queries like "Article 5" don't match well semantically.
-
-**Fix:**
-- Use more specific queries: "Quelles sont les conditions pour l'autorisation d'exercice?"
-- The system works best with natural language questions
-
-### Embeddings take too long
-
-**Cause:** BGE-M3 is a large model (~2GB).
-
-**Fix:**
-1. Use GPU: Set `device="cuda"` in embedder
-2. Use smaller model: `BAAI/bge-small-en-v1.5`
-3. Reduce batch size in `embedder.py`
-
-### vLLM connection refused
-
-**Cause:** vLLM server not running or wrong URL.
-
-**Fix:**
-1. Check vLLM is running: `docker ps | grep vllm`
-2. Check logs: `docker logs atlas-vllm`
-3. Verify URL in `.env`: `VLLM_URL=http://localhost:8000/v1`
-
-### PowerShell command errors
-
-**Important:** Don't use `&&` in PowerShell. Use `;` instead:
-
-```powershell
-# Wrong
-cd project && python script.py
-
-# Correct
-cd project; python script.py
-```
-
----
-
-## Project Structure
+## Structure du projet
 
 ```
-ChatAssistantAcaps/
+chatbot-_acaps/
 ├── backend_api/
 │   ├── app/
-│   │   ├── __init__.py
-│   │   ├── config.py          # API configuration
-│   │   ├── engine.py          # RAG engine
-│   │   ├── guardrails/        # Input/output validation
-│   │   ├── main.py            # FastAPI app
-│   │   └── models.py          # Pydantic models
-│   ├── Dockerfile
+│   │   ├── main.py          # Endpoints FastAPI, lifespan + embedding pre-warm
+│   │   ├── engine.py        # Moteur RAG (normalize → intent → embed → search → LLM)
+│   │   ├── models.py        # Schémas Pydantic
+│   │   ├── config.py        # Settings (pydantic-settings)
+│   │   └── guardrails/      # Validation input/output
+│   ├── Dockerfile           # Multi-stage, torch CPU-only, run as root
 │   └── requirements.txt
+│
 ├── data_ingestion/
-│   ├── __init__.py
-│   ├── config.py              # Ingestion config
-│   ├── documents/             # Source Markdown files
-│   ├── embedder.py            # BGE-M3 embeddings
-│   ├── parser.py              # Markdown parser
-│   ├── pipeline.py            # Orchestration
-│   └── vector_store.py        # Qdrant operations
+│   ├── documents/
+│   │   └── guide_portal_acaps.md   # Source unique (17 chunks)
+│   ├── parser.py            # Markdown → DocumentChunk[]
+│   ├── embedder.py          # AutoTokenizer+AutoModel MiniLM-L12 (384-dim)
+│   ├── vector_store.py      # PostgreSQL + pgvector, hybrid_search()
+│   └── pipeline.py          # Orchestration ingestion
+│
 ├── frontend_ui/
 │   ├── src/
-│   │   ├── App.tsx            # React app
-│   │   ├── index.css          # Styles
-│   │   └── main.tsx           # Entry point
-│   ├── Dockerfile
-│   └── package.json
-├── inference_server/
-│   ├── config.json
-│   └── Dockerfile
-├── vector_db/
-│   ├── Dockerfile
-│   └── qdrant_config.yaml
+│   │   ├── App.tsx          # Interface chat React, palette ACAPS
+│   │   └── index.css        # Styles ACAPS (sky/navy/sand)
+│   ├── nginx.conf           # Proxy /api, timeout 300s
+│   └── Dockerfile           # Node build → Nginx serve
+│
+├── ollama/
+│   ├── Dockerfile           # ollama/ollama + python3
+│   ├── entrypoint.sh        # Pull + warm-up modèle
+│   └── progress_parser.py   # Affichage progression téléchargement
+│
 ├── tests/
-│   ├── test_backend_api.py
-│   ├── test_data_ingestion.py
-│   └── test_guardrails.py
+│   ├── test_pipeline_full.py   # 62 questions (FR / AR / Darija / mix)
+│   └── test_results.json       # Résultats dernière exécution
+│
 ├── docker-compose.yml
-├── requirements.txt
 ├── env.example
+├── commandes.txt            # Référence commandes Docker
 └── README.md
 ```
 
 ---
 
-## License
+## Tests
 
-Internal use only - ACAPS
+Le script `tests/test_pipeline_full.py` valide le pipeline complet sur 62 questions réparties en 12 catégories.
+
+```bash
+# Prérequis : API healthy + ingestion terminée
+PYTHONIOENCODING=utf-8 python tests/test_pipeline_full.py
+```
+
+### Résultats (dernière exécution — 2026-04-22)
+
+| Catégorie | ✅ | 🔄 | Note |
+|-----------|----|----|------|
+| Basiques FR | 6/7 | 1 | "email obligatoire" — phrasing |
+| Basiques AR | 7/7 | 0 | Parfait |
+| Reformulation FR | 4/6 | 2 | "me plaindre" + "état dossier" |
+| Reformulation AR/Darija | 5/6 | 1 | Darija pur sans script arabe |
+| Pièges FR | 4/5 | 1 | "téléphone obligatoire" phrasing |
+| Pièges AR | 4/5 | 1 | Taille fichier non couverte |
+| Scénario FR | 4/5 | 1 | "référence perdue" — contenu absent |
+| Scénario AR | 5/5 | 0 | Parfait |
+| Multi-étapes FR | 3/4 | 1 | assurance/prévoyance — contenu absent |
+| Multi-étapes AR | 3/4 | 1 | idem |
+| Bruit FR+Darija | 2/4 | 2 | Translittération latine non supportée |
+| Bruit AR mix | 4/4 | 0 | Parfait |
+| **TOTAL** | **51/62** | **11/62** | **0 bloqués, 1 erreur réseau** |
+
+> 🔄 = réponse fournie via LLM general knowledge, sans citation documentaire  
+> Les améliorations prioritaires : synonymes français informels + contenu manquant dans le guide
 
 ---
 
-## Support
+## Dépannage
 
-For issues or questions, contact the development team.
+### Le chatbot répond "erreur survenue"
 
+**Cause :** Ollama est encore en train de charger le modèle (première requête après démarrage).
+
+```bash
+docker logs atlas-ollama --tail=5
+# Attendre que qwen2.5:3b soit chargé
+```
+
+### Réponse "je ne peux pas trouver cette information"
+
+**Cause :** La base vectorielle est vide ou le modèle d'embedding n'est pas encore chargé.
+
+```bash
+# Vérifier que l'API a fini de charger le modèle d'embedding
+docker logs atlas-api --tail=10
+# Chercher : "Embedding model pre-loaded successfully"
+
+# Puis lancer l'ingestion
+docker exec atlas-api python -m data_ingestion.pipeline --recreate
+```
+
+### Conteneur api redémarre en boucle (exit code 137)
+
+**Cause :** Manque de RAM (OOM kill). MiniLM + Ollama nécessitent ~3 GB RAM disponible.
+
+**Solution :** Fermer les applications consommant de la RAM. Vérifier dans Docker Desktop → Resources → Memory ≥ 4 GB.
+
+### Conflit téléchargement modèle d'embedding
+
+**Cause :** L'API et la commande d'ingestion téléchargent le modèle simultanément au premier lancement.
+
+**Solution :** Attendre que l'API affiche "pre-loaded successfully" avant de lancer l'ingestion.
+
+### Vérifier l'état général
+
+```bash
+docker compose ps
+curl http://localhost:8080/health
+curl http://localhost:8080/stats
+```
+
+---
+
+## Licence
+
+Usage interne ACAPS — © 2026 ACAPS. Tous droits réservés.
