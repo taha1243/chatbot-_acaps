@@ -102,8 +102,11 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       HF_HOME: /app/.cache/huggingface
+      GUARDRAILS_NO_TELEMETRY: "1"
+      OTEL_SDK_DISABLED: "true"
     volumes:
       - ./data_ingestion:/app/data_ingestion:ro
+      - ./backend_api/config:/app/config:ro
       - hf_cache:/app/.cache/huggingface
     depends_on:
       postgres:

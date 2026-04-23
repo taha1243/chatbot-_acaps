@@ -24,6 +24,10 @@ class IngestionConfig:
     # Processing Settings
     chunk_size: int = 512
     chunk_overlap: int = 50
+    # Only split on headers of this level or shallower.
+    # 2 = split on # and ##, keeping ## subsections as individual chunks.
+    # Section filter in engine.py then restricts retrieval to the right # section.
+    chunk_split_level: int = 2
     
     # Paths
     documents_dir: str = os.path.join(os.path.dirname(__file__), "documents")

@@ -41,6 +41,7 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+*.env
 
 node_modules/
 .cursorrules

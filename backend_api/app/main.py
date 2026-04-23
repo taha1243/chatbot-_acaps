@@ -192,7 +192,8 @@ async def chat(
         output_check = guardrails.check_output(
             response=rag_response.answer,
             context=rag_response.context_used,
-            retrieval_score=rag_response.confidence
+            retrieval_score=rag_response.confidence,
+            section_known=rag_response.metadata.get("section_filter_active", False),
         )
         if output_check.should_block:
             logger.warning(f"[{conversation_id}] Output blocked: {output_check.blocked_reason}")

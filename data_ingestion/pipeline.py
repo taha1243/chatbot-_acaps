@@ -50,8 +50,9 @@ class IngestionPipeline:
         self.config = config or get_config()
         self.use_mock = use_mock
         
-        # Initialize components
-        self.parser = MarkdownParser()
+        # Initialize components — chunk_split_level=1 keeps each top-level
+        # section (# Section X) as one complete chunk for the LLM
+        self.parser = MarkdownParser(max_split_level=self.config.chunk_split_level)
         
         if use_mock:
             from .embedder import MockEmbeddingGenerator

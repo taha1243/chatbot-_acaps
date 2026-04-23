@@ -8,7 +8,6 @@ from .guardrails import (
     OutputGuardrails,
     GuardrailResult,
     BlockReason,
-    RailType,
     get_guardrails,
 )
 
@@ -18,7 +17,5 @@ __all__ = [
     "OutputGuardrails",
     "GuardrailResult",
     "BlockReason",
-    "RailType",
     "get_guardrails",
 ]
-

@@ -1,41 +1,45 @@
 """
-Guardrails Module for Atlas-RAG
-Implements input/output validation and hallucination prevention.
+Guardrails Module for Atlas-RAG — powered by guardrails-ai
+Input and output validation using Guard objects with custom validators.
+Public API is unchanged: check_input() / check_output() / get_guardrails().
 """
-import re
 import logging
-from typing import Optional, Dict, Any, List, Tuple
-from dataclasses import dataclass
+from typing import Optional
 from enum import Enum
+from dataclasses import dataclass
+
+from guardrails import Guard
+from guardrails.validator_base import OnFailAction
+
+from .validators import (
+    NoJailbreak,
+    OnTopic,
+    NoHallucinationPhrases,
+    MinAnswerLength,
+    MAX_INPUT_CHARS,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class RailType(Enum):
-    """Types of guardrails."""
-    INPUT = "input"
-    OUTPUT = "output"
-    FACT_CHECK = "fact_check"
-
-
 class BlockReason(Enum):
-    """Reasons for blocking a message."""
     JAILBREAK = "jailbreak_attempt"
     TOXICITY = "toxic_content"
     OFF_TOPIC = "off_topic"
     LOW_CONFIDENCE = "low_retrieval_confidence"
     HALLUCINATION = "potential_hallucination"
     PII_DETECTED = "pii_detected"
+    SCHEMA_INVALID = "invalid_output_schema"
 
 
 @dataclass
 class GuardrailResult:
-    """Result of guardrail check."""
     passed: bool
     blocked_reason: Optional[BlockReason] = None
     message: Optional[str] = None
     confidence: float = 1.0
-    
+    fixed_value: Optional[str] = None
+
     @property
     def should_block(self) -> bool:
         return not self.passed
@@ -43,293 +47,199 @@ class GuardrailResult:
 
 class InputGuardrails:
     """
-    Input validation guardrails.
-    Checks for jailbreaks, toxicity, and off-topic queries.
+    Validates user questions before RAG processing.
+    Guard: NoJailbreak → OnTopic (both EXCEPTION on fail → caught below).
     """
-    
-    # Jailbreak patterns
-    JAILBREAK_PATTERNS = [
-        r"ignore.*(?:previous|your).*instructions",
-        r"forget.*(?:previous|your).*instructions",
-        r"pretend.*(?:you are|to be)",
-        r"act as if",
-        r"you are now",
-        r"new persona",
-        r"bypass.*(?:filters|restrictions)",
-        r"DAN.*mode",
-        r"developer.*mode",
-    ]
-    
-    # Off-topic patterns
-    OFF_TOPIC_PATTERNS = [
-        r"(?:what's|what is).*weather",
-        r"(?:tell|write).*(?:joke|story|poem)",
-        r"(?:who won|score of).*(?:game|match)",
-        r"(?:latest|recent).*news",
-        r"(?:stock|crypto).*price",
-        r"(?:recipe|cook).*",
-        r"(?:translate|translation)",
-    ]
-    
-    # Toxic patterns (simplified)
-    TOXIC_PATTERNS = [
-        r"(?:you are|you're).*(?:stupid|idiot|dumb)",
-        r"(?:this is|it's).*(?:garbage|trash|useless)",
-        r"\b(?:hate|kill|die)\b",
-    ]
-    
+
     def __init__(self, enabled: bool = True):
         self.enabled = enabled
-        self._compile_patterns()
-    
-    def _compile_patterns(self):
-        """Pre-compile regex patterns for performance."""
-        self.jailbreak_re = [re.compile(p, re.IGNORECASE) for p in self.JAILBREAK_PATTERNS]
-        self.off_topic_re = [re.compile(p, re.IGNORECASE) for p in self.OFF_TOPIC_PATTERNS]
-        self.toxic_re = [re.compile(p, re.IGNORECASE) for p in self.TOXIC_PATTERNS]
-    
+        self._guard = Guard().use_many(
+            NoJailbreak(on_fail=OnFailAction.EXCEPTION),
+            OnTopic(on_fail=OnFailAction.EXCEPTION),
+        )
+        logger.info("InputGuardrails ready (guardrails-ai)")
+
     def check(self, user_input: str) -> GuardrailResult:
-        """
-        Check user input against all input guardrails.
-        
-        Args:
-            user_input: The user's message
-            
-        Returns:
-            GuardrailResult indicating pass/fail
-        """
         if not self.enabled:
             return GuardrailResult(passed=True)
-        
-        # Check jailbreak
-        result = self._check_jailbreak(user_input)
-        if result.should_block:
-            logger.warning(f"Jailbreak attempt detected: {user_input[:100]}")
-            return result
-        
-        # Check toxicity
-        result = self._check_toxicity(user_input)
-        if result.should_block:
-            logger.warning(f"Toxic content detected: {user_input[:100]}")
-            return result
-        
-        # Check off-topic
-        result = self._check_off_topic(user_input)
-        if result.should_block:
-            logger.info(f"Off-topic query detected: {user_input[:100]}")
-            return result
-        
-        return GuardrailResult(passed=True)
-    
-    def _check_jailbreak(self, text: str) -> GuardrailResult:
-        """Check for jailbreak attempts."""
-        for pattern in self.jailbreak_re:
-            if pattern.search(text):
-                return GuardrailResult(
-                    passed=False,
-                    blocked_reason=BlockReason.JAILBREAK,
-                    message="I can only help with questions about ACAPS documentation and regulations."
-                )
-        return GuardrailResult(passed=True)
-    
-    def _check_toxicity(self, text: str) -> GuardrailResult:
-        """Check for toxic content."""
-        for pattern in self.toxic_re:
-            if pattern.search(text):
-                return GuardrailResult(
-                    passed=False,
-                    blocked_reason=BlockReason.TOXICITY,
-                    message="Please rephrase your question in a respectful manner."
-                )
-        return GuardrailResult(passed=True)
-    
-    def _check_off_topic(self, text: str) -> GuardrailResult:
-        """Check for off-topic queries."""
-        for pattern in self.off_topic_re:
-            if pattern.search(text):
-                return GuardrailResult(
-                    passed=False,
-                    blocked_reason=BlockReason.OFF_TOPIC,
-                    message="I'm designed to assist with ACAPS regulations, internal rules, and site usage. I cannot help with topics outside this scope."
-                )
-        return GuardrailResult(passed=True)
+
+        try:
+            outcome = self._guard.validate(user_input)
+            if outcome.validation_passed:
+                return GuardrailResult(passed=True)
+            # validation_passed=False but no exception (NOOP validators) — treat as blocked
+            error_msg = outcome.error or "Validation échouée"
+            return self._map_input_error(error_msg)
+        except Exception as exc:
+            return self._map_input_error(str(exc))
+
+    def _map_input_error(self, msg: str) -> GuardrailResult:
+        msg_lower = msg.lower()
+        if "jailbreak" in msg_lower:
+            return GuardrailResult(
+                passed=False,
+                blocked_reason=BlockReason.JAILBREAK,
+                message="Je peux uniquement vous aider avec les questions relatives au portail ACAPS.",
+            )
+        if "hors sujet" in msg_lower or "on-topic" in msg_lower or "off_topic" in msg_lower:
+            return GuardrailResult(
+                passed=False,
+                blocked_reason=BlockReason.OFF_TOPIC,
+                message="Je suis conçu pour assister avec l'utilisation du portail ACAPS uniquement.",
+            )
+        logger.warning("InputGuardrails blocked (unmapped reason): %s", msg[:120])
+        return GuardrailResult(
+            passed=False,
+            blocked_reason=BlockReason.OFF_TOPIC,
+            message="Je ne peux pas traiter cette demande.",
+        )
 
 
 class OutputGuardrails:
     """
-    Output validation guardrails.
-    Checks for hallucinations and ensures factual consistency.
+    Validates LLM answers before returning to the user.
+    Guard: MinAnswerLength (NOOP) → NoHallucinationPhrases (NOOP).
+    NOOP means we inspect outcome.validation_passed without raising.
     """
-    
-    # Phrases indicating potential hallucination
-    HALLUCINATION_INDICATORS = [
-        r"I think",
-        r"I believe",
-        r"probably",
-        r"might be",
-        r"could be",
-        r"as far as I know",
-        r"in my opinion",
-        r"generally speaking",
-    ]
-    
-    def __init__(
-        self,
-        enabled: bool = True,
-        confidence_threshold: float = 0.75
-    ):
+
+    def __init__(self, enabled: bool = True, confidence_threshold: float = 0.40):
         self.enabled = enabled
         self.confidence_threshold = confidence_threshold
-        self.hallucination_re = [
-            re.compile(p, re.IGNORECASE) for p in self.HALLUCINATION_INDICATORS
-        ]
-    
+        self._guard = Guard().use_many(
+            MinAnswerLength(min_chars=30, on_fail=OnFailAction.NOOP),
+            NoHallucinationPhrases(on_fail=OnFailAction.NOOP),
+        )
+        logger.info(
+            "OutputGuardrails ready (guardrails-ai, threshold=%.2f)", confidence_threshold
+        )
+
     def check(
         self,
         response: str,
         context: str,
-        retrieval_score: float
+        retrieval_score: float,
+        section_known: bool = False,
     ) -> GuardrailResult:
-        """
-        Check model output for hallucinations.
-        
-        Args:
-            response: The model's response
-            context: The retrieved context used
-            retrieval_score: Similarity score from retrieval
-            
-        Returns:
-            GuardrailResult indicating pass/fail
-        """
         if not self.enabled:
             return GuardrailResult(passed=True)
-        
-        # Check retrieval confidence
-        if retrieval_score < self.confidence_threshold:
-            logger.info(f"Low retrieval score: {retrieval_score}")
+
+        # Low retrieval confidence — block before even checking the answer.
+        # Skip this check when a section filter was active: the section is
+        # guaranteed correct, so a slightly-below-threshold score is still valid.
+        if not section_known and 0 < retrieval_score < self.confidence_threshold:
+            logger.info("Low retrieval score: %.3f", retrieval_score)
             return GuardrailResult(
                 passed=False,
                 blocked_reason=BlockReason.LOW_CONFIDENCE,
-                message="I cannot find relevant information in the available documents.",
-                confidence=retrieval_score
+                message="Je ne trouve pas d'information pertinente dans les documents disponibles.",
+                confidence=retrieval_score,
             )
-        
-        # Check for hallucination indicators
-        result = self._check_hallucination_phrases(response)
-        if result.should_block:
-            return result
-        
-        # Check if response references content not in context
-        result = self._check_grounding(response, context)
-        if result.should_block:
-            return result
-        
-        return GuardrailResult(passed=True, confidence=retrieval_score)
-    
-    def _check_hallucination_phrases(self, response: str) -> GuardrailResult:
-        """Check for phrases that indicate uncertainty/hallucination."""
-        for pattern in self.hallucination_re:
-            if pattern.search(response):
+
+        # Schema + hallucination check via guardrails-ai
+        # context passed as metadata — available to validators for grounding checks
+        try:
+            outcome = self._guard.validate(response, metadata={"context": context[:MAX_INPUT_CHARS]})
+        except Exception as exc:
+            logger.warning("OutputGuardrails exception: %s", str(exc)[:200])
+            return GuardrailResult(
+                passed=False,
+                blocked_reason=BlockReason.SCHEMA_INVALID,
+                message="La réponse générée ne respecte pas les critères de qualité.",
+                confidence=retrieval_score,
+            )
+
+        if not outcome.validation_passed:
+            error_msg = outcome.error or ""
+            logger.warning("OutputGuardrails failed: %s", error_msg[:120])
+
+            if "incertitude" in error_msg.lower() or "hallucin" in error_msg.lower():
                 return GuardrailResult(
                     passed=False,
                     blocked_reason=BlockReason.HALLUCINATION,
-                    message="I cannot provide a definitive answer based on the available documents."
+                    message="Je ne peux pas fournir une réponse vérifiée sur base des documents disponibles.",
+                    confidence=retrieval_score,
                 )
-        return GuardrailResult(passed=True)
-    
-    def _check_grounding(self, response: str, context: str) -> GuardrailResult:
-        """
-        Check if response is grounded in context.
-        hhhh heuristic simple hada, khass n9ado
-        """
-        # TODO : N9AD HAD TKHARBI9 and I Implement a more robust grounding check.
-        # Extract potential entity-like terms (capitalized words)
-        # print("response:", response)
-        # print("Context:", context)
+            if "trop courte" in error_msg.lower():
+                return GuardrailResult(
+                    passed=False,
+                    blocked_reason=BlockReason.SCHEMA_INVALID,
+                    message="La réponse générée est insuffisante. Veuillez reformuler votre question.",
+                    confidence=retrieval_score,
+                )
+            return GuardrailResult(
+                passed=False,
+                blocked_reason=BlockReason.SCHEMA_INVALID,
+                message="La réponse ne respecte pas les critères de qualité attendus.",
+                confidence=retrieval_score,
+            )
 
-        # response_entities = set(re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', response))
-        # context_lower = context.lower()
-        # print("Response entities:", response_entities)
-        # # Check if entities are grounded
-        # ungrounded = []
-        # for entity in response_entities:
-        #     # Skip common words
-        #     if entity.lower() in ['the', 'this', 'that', 'article', 'section']:
-        #         continue
-        #     if entity.lower() not in context_lower:
-        #         ungrounded.append(entity)
-        
-        # # If more than 2 ungrounded entities, flag as potential hallucination
-        # if len(ungrounded) > 2:
-        #     logger.warning(f"Ungrounded entities found: {ungrounded}")
-        #     return GuardrailResult(
-        #         passed=False,
-        #         blocked_reason=BlockReason.HALLUCINATION,
-        #         message="I cannot verify this information in the available documents."
-        #     )
-        
-        return GuardrailResult(passed=True)
+        validated_answer = outcome.validated_output if outcome.validated_output else response
+        return GuardrailResult(
+            passed=True,
+            confidence=retrieval_score,
+            fixed_value=validated_answer,
+        )
 
 
 class Guardrails:
-    """
-    Main guardrails orchestrator.
-    Combines input and output validation.
-    """
-    
-    def __init__(
-        self,
-        enabled: bool = True,
-        confidence_threshold: float = 0.75
-    ):
+    """Main orchestrator: composes InputGuardrails + OutputGuardrails."""
+
+    def __init__(self, enabled: bool = True, confidence_threshold: float = 0.40):
         self.enabled = enabled
         self.input_rails = InputGuardrails(enabled=enabled)
         self.output_rails = OutputGuardrails(
-            enabled=enabled,
-            confidence_threshold=confidence_threshold
+            enabled=enabled, confidence_threshold=confidence_threshold
         )
-        logger.info(f"Guardrails initialized (enabled={enabled}, threshold={confidence_threshold})")
-    
+        logger.info(
+            "Guardrails initialized (enabled=%s, threshold=%.2f)", enabled, confidence_threshold
+        )
+
     def check_input(self, user_input: str) -> GuardrailResult:
-        """Check user input."""
         return self.input_rails.check(user_input)
-    
+
     def check_output(
         self,
         response: str,
         context: str,
-        retrieval_score: float
+        retrieval_score: float,
+        section_known: bool = False,
     ) -> GuardrailResult:
-        """Check model output."""
-        return self.output_rails.check(response, context, retrieval_score)
-    
+        return self.output_rails.check(response, context, retrieval_score, section_known)
+
     def get_blocked_response(self, reason: BlockReason) -> str:
-        """Get appropriate response for blocked content."""
         responses = {
-            BlockReason.JAILBREAK: "I can only help with questions about ACAPS documentation and regulations.",
-            BlockReason.TOXICITY: "Please rephrase your question in a respectful manner.",
-            BlockReason.OFF_TOPIC: "I'm designed to assist with ACAPS regulations, internal rules, and site usage only.",
-            BlockReason.LOW_CONFIDENCE: "I cannot find this information in the available documents.",
-            BlockReason.HALLUCINATION: "I cannot provide a verified answer based on the available documents.",
-            BlockReason.PII_DETECTED: "I cannot process requests containing personal information.",
+            BlockReason.JAILBREAK: (
+                "Je peux uniquement vous aider avec les questions relatives au portail ACAPS."
+            ),
+            BlockReason.TOXICITY: (
+                "Veuillez reformuler votre question de manière respectueuse."
+            ),
+            BlockReason.OFF_TOPIC: (
+                "Je suis conçu pour assister avec l'utilisation du portail ACAPS uniquement."
+            ),
+            BlockReason.LOW_CONFIDENCE: (
+                "Je ne trouve pas cette information dans les documents disponibles."
+            ),
+            BlockReason.HALLUCINATION: (
+                "Je ne peux pas fournir une réponse vérifiée sur base des documents disponibles."
+            ),
+            BlockReason.PII_DETECTED: (
+                "Je ne peux pas traiter des demandes contenant des données personnelles."
+            ),
+            BlockReason.SCHEMA_INVALID: (
+                "La réponse générée ne respecte pas les critères de qualité."
+            ),
         }
-        return responses.get(reason, "I cannot process this request.")
+        return responses.get(reason, "Je ne peux pas traiter cette demande.")
 
 
-# Singleton instance
 _guardrails_instance: Optional[Guardrails] = None
 
 
-def get_guardrails(
-    enabled: bool = True,
-    confidence_threshold: float = 0.75
-) -> Guardrails:
-    """Get or create guardrails instance."""
+def get_guardrails(enabled: bool = True, confidence_threshold: float = 0.40) -> Guardrails:
     global _guardrails_instance
     if _guardrails_instance is None:
         _guardrails_instance = Guardrails(
-            enabled=enabled,
-            confidence_threshold=confidence_threshold
+            enabled=enabled, confidence_threshold=confidence_threshold
         )
     return _guardrails_instance
-

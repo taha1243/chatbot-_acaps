@@ -49,15 +49,18 @@ class MarkdownParser:
     
     # Regex pattern for ATX headers
     HEADER_PATTERN = re.compile(r'^(#{1,6})\s+(.+)$', re.MULTILINE)
-    
-    def __init__(self, default_base_url: str = ""):
+
+    def __init__(self, default_base_url: str = "", max_split_level: int = 6):
         """
         Initialize the parser.
-        
+
         Args:
             default_base_url: Default base URL if not specified in frontmatter
+            max_split_level: Only headers at this depth or shallower create new
+                chunks (1 = top-level # only, 6 = every header level).
         """
         self.default_base_url = default_base_url
+        self.max_split_level = max_split_level
     
     def parse_file(self, file_path: str) -> List[DocumentChunk]:
         """
@@ -96,7 +99,7 @@ class MarkdownParser:
             os.path.getmtime(file_path)
         ).isoformat()
         
-        # Split by headers
+        # Split by headers (respects max_split_level set at parser init)
         chunks = self._split_by_headers(body)
         
         # Create DocumentChunk objects
@@ -134,47 +137,48 @@ class MarkdownParser:
     
     def _split_by_headers(self, content: str) -> List[tuple]:
         """
-        Split content by ATX headers, maintaining hierarchy.
-        
-        Args:
-            content: Markdown content
-            
+        Split content by ATX headers up to self.max_split_level.
+        Headers deeper than max_split_level are kept as plain text inside the
+        parent chunk, preserving full section context for the LLM.
+
         Returns:
             List of (header_path, text) tuples
         """
         chunks = []
-        header_stack = []  # [(level, title), ...]
-        current_text = []
-        
-        lines = content.split('\n')
-        
-        for line in lines:
+        header_stack: List[tuple] = []  # [(level, title), ...]
+        current_text: List[str] = []
+
+        for line in content.split('\n'):
             match = self.HEADER_PATTERN.match(line)
-            
+
             if match:
-                # Save previous section if exists
-                if current_text:
-                    header_path = self._build_header_path(header_stack)
-                    chunks.append((header_path, '\n'.join(current_text)))
-                    current_text = []
-                
-                # Process new header
                 level = len(match.group(1))
                 title = match.group(2).strip()
-                
-                # Pop headers of same or lower level
-                while header_stack and header_stack[-1][0] >= level:
-                    header_stack.pop()
-                
-                header_stack.append((level, title))
+
+                if level <= self.max_split_level:
+                    # This header triggers a new chunk boundary
+                    if current_text:
+                        header_path = self._build_header_path(header_stack)
+                        chunks.append((header_path, '\n'.join(current_text)))
+                        current_text = []
+
+                    # Update the header hierarchy
+                    while header_stack and header_stack[-1][0] >= level:
+                        header_stack.pop()
+                    header_stack.append((level, title))
+
+                    # Include the header line as content so the LLM can read it
+                    current_text.append(line)
+                else:
+                    # Deeper header — kept as formatted content in the current chunk
+                    current_text.append(line)
             else:
                 current_text.append(line)
-        
-        # Don't forget the last section
+
         if current_text:
             header_path = self._build_header_path(header_stack)
             chunks.append((header_path, '\n'.join(current_text)))
-        
+
         return chunks
     
     def _build_header_path(self, header_stack: List[tuple]) -> str:

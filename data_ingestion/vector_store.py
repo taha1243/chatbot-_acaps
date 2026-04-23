@@ -329,8 +329,13 @@ class VectorStore:
         score_threshold: float = 0.0,
         keyword_boost: float = 0.3,
         file_name: Optional[str] = None,
+        header_path_prefix: Optional[str] = None,
     ) -> List[SearchResult]:
-        """Hybrid search combining semantic and keyword search."""
+        """
+        Hybrid search combining semantic and keyword search.
+        header_path_prefix: when set, restricts results to chunks whose
+        header_path starts with this string (e.g. "Section 1").
+        """
         import re
 
         filter_conditions = {"file_name": file_name} if file_name else None
@@ -367,6 +372,18 @@ class VectorStore:
                     kw_results = [r for r in kw_results if r.file_name == file_name]
                 keyword_results.extend(kw_results)
                 logger.info("Keyword search for '%s' found %s results", keyword, len(kw_results))
+
+        # Section filter: keep only chunks whose header_path starts with the prefix
+        if header_path_prefix:
+            semantic_results = [
+                r for r in semantic_results
+                if r.header_path.startswith(header_path_prefix)
+            ]
+            keyword_results = [
+                r for r in keyword_results
+                if r.header_path.startswith(header_path_prefix)
+            ]
+            logger.info("Section filter '%s' applied", header_path_prefix)
 
         result_map = {result.id: result for result in semantic_results}
 

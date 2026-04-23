@@ -1,0 +1,48 @@
+{
+  "submit": [
+    "soumettre", "déposer", "créer", "nouvelle réclamation", "nouveau",
+    "ouvrir", "faire une réclamation", "comment faire", "submit",
+    "plainte", "envoyer réclamation", "déposer réclamation",
+    "je veux me plaindre", "bouton pour déposer",
+    "documents", "pièces", "justificatif", "joindre", "attacher",
+    "pdf", "image", "annexe", "fichier", "5 mo", "10 mo", "taille",
+    "obligatoire", "requis", "champ", "formulaire",
+    "identifiant", "cin", "passeport", "adresse", "qualité",
+    "email", "téléphone", "nom", "prénom", "sans téléphone",
+    "étape", "remplir", "saisir", "première étape", "informations demandées",
+    "conditions", "accepter les conditions", "sans accepter",
+    "assurance", "prévoyance", "amo", "retraite", "mutuelle",
+    "شكاية", "شكوى", "تقديم", "تقديم شكاية",
+    "وثائق", "ملفات", "مرفق", "خطوات", "مراحل",
+    "إلزامي", "إجباري", "مطلوب", "شروط", "نموذج",
+    "بريد إلكتروني", "هاتف", "بدون", "بلا",
+    "10 ميغا", "ميغا"
+  ],
+  "track": [
+    "suivre", "suivi", "statut", "état", "avancement",
+    "ma réclamation", "référence", "où en est", "délai",
+    "combien de temps", "consulter", "voir l'état", "mon dossier",
+    "j'ai déjà envoyé", "déjà soumis", "après envoi consulter",
+    "perdre la référence", "perdu la référence", "retrouver référence",
+    "ajouter document après", "pièce après envoi",
+    "réponse reçue", "pas de réponse",
+    "تتبع", "تابع", "متابعة", "حالة", "الحالة",
+    "مرجع", "رقم المرجع", "ضيعت", "ضاعت", "نتبع"
+  ],
+  "close": [
+    "clôturer", "fermer", "réouvrir", "rouvrir", "clôture",
+    "fermé", "close", "réouverture", "réactiver",
+    "7 jours", "7 jour", "après réponse", "délai réponse",
+    "10 jours", "dépasse", "indéfiniment", "reste ouvert",
+    "إغلاق", "إعادة فتح", "إعادة الفتح",
+    "7 أيام", "سبعة أيام", "10 أيام", "عشرة أيام"
+  ],
+  "satisfaction": [
+    "satisfaction", "questionnaire", "avis", "évaluation",
+    "noter", "note", "sondage", "enquête",
+    "pas reçu questionnaire", "pas reçu le questionnaire",
+    "pourquoi pas reçu",
+    "استبيان", "رضا", "تقييم",
+    "ما توصلتش", "لم أتلق استبيان"
+  ]
+}
