@@ -69,9 +69,9 @@ Atlas-RAG is a RAG-based chatbot that:
           │                │                │
           ▼                ▼                ▼
 ┌─────────────────┐ ┌─────────────┐ ┌─────────────────┐
-│  pgvector Vector  │ │   vLLM      │ │  BGE-M3         │
-│    Database     │ │  Inference  │ │  Embeddings     │
-│  :6333          │ │  :8000      │ │  (local)        │
+│  PostgreSQL +   │ │   vLLM      │ │  BGE-M3         │
+│   pgvector      │ │  Inference  │ │  Embeddings     │
+│  :5432          │ │  :8000      │ │  (local)        │
 └─────────────────┘ └─────────────┘ └─────────────────┘
 ```
 
@@ -81,7 +81,7 @@ Atlas-RAG is a RAG-based chatbot that:
 2. **Input Guardrails** → Check for jailbreaks, toxicity, off-topic
 3. **Greeting Detection** → If greeting, respond conversationally (skip RAG)
 4. **Query Embedding** → BGE-M3 embeds the question
-5. **Vector Search** → Qdrant finds similar document chunks
+5. **Vector Search** → pgvector finds similar document chunks
 6. **Context Assembly** → Top-K results assembled as context
 7. **LLM Generation** → Qwen generates answer from context
 8. **Output Guardrails** → Check for hallucinations
@@ -96,12 +96,12 @@ Atlas-RAG is a RAG-based chatbot that:
 - **Docker** and **Docker Compose** (for containerized deployment)
 - **Python 3.12+** (for local development)
 - **Node.js 18+** (for frontend development)
-- **NVIDIA GPU** with CUDA (for vLLM inference server)
+- **NVIDIA GPU** with CUDA (for vLLM inference server, optional — Ollama works on CPU)
 
 ### One-Command Start (Docker)
 
 ```bash
-# Clone and start all services
+# Start all services
 docker-compose up -d
 
 # Ingest documents
@@ -143,8 +143,10 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Start Qdrant (Docker)
-docker run -d -p 6333:6333 -p 6334:6334 qdrant/qdrant:latest
+# Start PostgreSQL + pgvector (Docker)
+docker run -d -p 5432:5432 \
+  -e POSTGRES_DB=atlas_rag -e POSTGRES_USER=atlas -e POSTGRES_PASSWORD=atlas \
+  pgvector/pgvector:pg16
 
 # Start vLLM (requires GPU)
 docker run -d --gpus all -p 8000:8000 vllm/vllm-openai:latest \
@@ -173,9 +175,12 @@ VLLM_URL=http://localhost:8000/v1
 VLLM_API_KEY=secret
 VLLM_MODEL=Qwen/Qwen2.5-7B-Instruct
 
-# Qdrant Vector Database
-QDRANT_URL=http://localhost:6333
-QDRANT_COLLECTION=atlas_knowledge
+# PostgreSQL + pgvector
+DATABASE_URL=postgresql://atlas:atlas@localhost:5432/atlas_rag
+VECTOR_TABLE=atlas_knowledge
+POSTGRES_DB=atlas_rag
+POSTGRES_USER=atlas
+POSTGRES_PASSWORD=atlas
 
 # Embedding Model
 EMBEDDING_MODEL=BAAI/bge-m3
@@ -203,6 +208,7 @@ DEBUG=false
 | `TEMPERATURE` | 0.0 | Keep at 0 for factual, deterministic answers |
 | `TOP_K_RESULTS` | 5 | Number of document chunks to retrieve |
 | `ENABLE_GUARDRAILS` | true | Disable only for testing |
+| `DATABASE_URL` | postgresql://atlas:atlas@localhost:5432/atlas_rag | pgvector connection string |
 
 ---
 
@@ -228,7 +234,8 @@ docker-compose logs -f api
 | Frontend UI | http://localhost:3000 | Chat interface |
 | Backend API | http://localhost:8080 | REST API |
 | API Docs | http://localhost:8080/docs | Swagger UI |
-| Qdrant UI | http://localhost:6333/dashboard | Vector DB dashboard |
+| pgAdmin | http://localhost:5050 | PostgreSQL admin dashboard |
+| PostgreSQL | localhost:5432 | pgvector database |
 | vLLM | http://localhost:8000 | LLM inference |
 
 ---
@@ -356,8 +363,8 @@ python -m data_ingestion.pipeline -v
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Markdown   │────▶│    Parser    │────▶│   Embedder   │────▶│    Qdrant    │
-│    Files     │     │  (Chunking)  │     │   (BGE-M3)   │     │   (Upsert)   │
+│   Markdown   │────▶│    Parser    │────▶│   Embedder   │────▶│  PostgreSQL  │
+│    Files     │     │  (Chunking)  │     │   (BGE-M3)   │     │  (pgvector)  │
 └──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
                             │
                             ▼

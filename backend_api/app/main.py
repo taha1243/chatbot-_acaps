@@ -73,9 +73,17 @@ def get_rag_engine() -> RAGEngine:
 
 def get_guardrails_instance() -> Guardrails:
     """Get guardrails instance."""
+    # Share the engine's embedder for semantic off-topic checks, avoiding
+    # a second BGE-M3 load in memory. Accessed lazily via a closure.
+    engine = get_engine(use_mock=settings.debug)
     return get_guardrails(
         enabled=settings.enable_guardrails,
-        confidence_threshold=settings.similarity_threshold
+        min_confidence_threshold=settings.min_confidence_threshold,
+        groundedness_threshold=settings.groundedness_threshold,
+        enable_pii_detection=settings.enable_pii_detection,
+        enable_semantic_scope=settings.enable_semantic_scope,
+        semantic_scope_threshold=settings.semantic_scope_threshold,
+        embedder_provider=lambda: engine.embedder,
     )
 
 

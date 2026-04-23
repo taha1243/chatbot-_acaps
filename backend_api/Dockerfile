@@ -16,8 +16,8 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies (large wheels like torch/sentence-transformers need long timeout + retries)
+RUN pip install --no-cache-dir --timeout 600 --retries 10 -r requirements.txt
 
 # Copy application code
 COPY . .

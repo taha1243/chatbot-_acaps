@@ -135,7 +135,7 @@ class VectorStore:
                                 base_url TEXT NOT NULL DEFAULT '',
                                 last_updated TIMESTAMPTZ,
                                 chunk_index INTEGER NOT NULL,
-                                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                                metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb,
                                 embedding vector({})
                             )
                             """

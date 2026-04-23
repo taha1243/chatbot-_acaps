@@ -38,20 +38,51 @@ class RAGEngine:
     
     SYSTEM_PROMPT = """Tu es un assistant de référence pour l'ACAPS (Autorité de Contrôle des Assurances et de la Prévoyance Sociale) spécialisé dans la documentation interne.
 
-RÈGLES ESSENTIELLES :
-1. Réponds uniquement à partir du contexte fourni.
-2. Si l'information n'est pas présente, réponds : "Je ne trouve pas cette information dans les documents disponibles".
-3. Ne fais jamais de suppositions ni d'inventions.
-4. Cite toujours la source en utilisant le chemin d'en-tête fourni.
-5. Sois précis et factuel.
-6. Détermine la langue de la question à partir de "Question" ci-dessous et réponds exclusivement dans cette langue. Si plusieurs langues sont utilisées, privilégie le français.
+INSTRUCTIONS STRICTES :
+
+Tu dois choisir EXACTEMENT UN des deux modes de réponse ci-dessous — JAMAIS les deux à la fois :
+
+▸ MODE A — Le contexte contient l'information demandée :
+  • Réponds uniquement à partir du contexte.
+  • Sois précis, factuel et structuré.
+  • Cite la source via le chemin d'en-tête fourni (ex. : "Selon [Section 1 — Soumettre une Réclamation > Accès]…").
+  • N'AJOUTE JAMAIS de phrase de refus, de disclaimer, ni de mention « je ne trouve pas » — même partielle, même en fin de réponse.
+
+▸ MODE B — Le contexte NE contient PAS l'information demandée :
+  • Réponds EXACTEMENT et UNIQUEMENT cette phrase, sans rien ajouter :
+    « Je ne trouve pas cette information dans les documents disponibles. »
+  • N'invente rien. N'inclus aucune information du contexte.
+
+Règles transverses :
+  • Ne fais jamais de suppositions ni d'inventions.
+  • Détermine la langue de la question et réponds exclusivement dans cette langue. Si plusieurs langues sont mélangées, privilégie le français.
+
+EXEMPLES :
+
+Exemple 1 — information présente (MODE A) :
+Contexte : [Source: Section 1 — Soumettre une Réclamation > Accès]
+Pour soumettre une réclamation : 1) Scroller la page principale. 2) Cliquer sur "Soumettre une réclamation".
+Question : Comment déposer une réclamation ?
+Réponse attendue :
+Pour déposer une réclamation :
+1. Scroller jusqu'au bas de la page principale.
+2. Cliquer sur « Soumettre une réclamation ».
+(Source : Section 1 — Soumettre une Réclamation > Accès.)
+
+Exemple 2 — information absente (MODE B) :
+Contexte : [Source: Section 3] Les horaires d'ouverture sont de 9h à 17h.
+Question : Quel est le montant maximal d'indemnisation ?
+Réponse attendue :
+Je ne trouve pas cette information dans les documents disponibles.
+
+---
 
 Contexte des documents :
 {context}
 
 Question : {question}
 
-Réponds uniquement sur la base du contexte ci-dessus :"""
+Réponse :"""
     
     def __init__(
         self,
@@ -70,7 +101,8 @@ Réponds uniquement sur la base du contexte ci-dessus :"""
         self._llm_client = None
         self._vector_store = None
         self._embedder = None
-        
+        self._greeting_router = None
+
         logger.info(f"RAGEngine initialized (mock={use_mock})")
     
     @property
@@ -129,28 +161,50 @@ Réponds uniquement sur la base du contexte ci-dessus :"""
                     model_name=self.settings.embedding_model
                 )
         return self._embedder
+
+    @property
+    def greeting_router(self):
+        """Lazy load the semantic greeting router."""
+        if self._greeting_router is None:
+            from .greeting_router import SemanticGreetingRouter
+            self._greeting_router = SemanticGreetingRouter(
+                embedder_provider=lambda: self.embedder,
+                threshold=self.settings.greeting_similarity_threshold,
+            )
+        return self._greeting_router
     
     def _is_greeting(self, text: str) -> bool:
         """
-        Check if the input text is a greeting.
-
-        Args:
-            text: Input text to check
-
-        Returns:
-            True if the text contains a greeting, False otherwise
+        Check if the input text is a greeting or small-talk pleasantry
+        (e.g. "bonjour", "comment vas-tu ?", "ça va ?", "how are you").
+        Tolerates common typos (e.g. "comments vas tu").
         """
-        greeting_keywords = [
-            "bonjour", "salut", "hello", "hi", "coucou", "salam", "holla",
-            "bonsoir", "good morning", "good afternoon", "good evening",
-            "hey", "yo", "hola"
-        ]
+        import re
 
-        # Clean and lowercase the text for matching
         clean_text = text.strip().lower()
 
-        # Check if any greeting keyword is in the text
-        return any(keyword in clean_text for keyword in greeting_keywords)
+        # Whole-word greetings (avoid matching inside larger words like "hire")
+        greeting_words = [
+            "bonjour", "salut", "hello", "hi", "coucou", "salam", "holla",
+            "bonsoir", "hey", "yo", "hola", "marhaba", "ahlan", "cava",
+        ]
+        tokens = set(re.findall(r"[\w'’çàâäéèêëîïôöùûüÿñ]+", clean_text))
+        if any(word in tokens for word in greeting_words):
+            return True
+
+        # Regex patterns for small-talk — tolerant to typos and punctuation
+        smalltalk_patterns = [
+            r"\bgood\s+(morning|afternoon|evening|night)\b",
+            r"\bhow\s+are\s+(you|u)\b",
+            r"\bhow'?s\s+it\s+going\b",
+            r"\bwhat'?s\s+up\b",
+            r"\bcomments?\s+(vas|allez|ca\s+va|ça\s+va)\b",  # "comment(s) vas/allez/ça va"
+            r"\bça\s+va\b",
+            r"\bca\s+va\b",
+            r"\bquoi\s+de\s+neuf\b",
+            r"\btout\s+va\s+bien\b",
+        ]
+        return any(re.search(p, clean_text) for p in smalltalk_patterns)
 
     def query(self, question: str) -> RAGResponse:
         """
@@ -164,10 +218,30 @@ Réponds uniquement sur la base du contexte ci-dessus :"""
         """
         logger.info(f"Processing query: {question[:100]}...")
 
-        # Check if this is a greeting - handle immediately without database search
+        # --- Greeting / small-talk routing -------------------------------
+        # Two-stage: a fast regex pre-filter for obvious cases, then an
+        # embedding-similarity fallback that catches paraphrases and typos.
+        greeting_detected = False
+        greeting_source = None
+        greeting_score = 1.0
+
         if self._is_greeting(question):
-            logger.info("Detected greeting, returning conversational response")
-            # Use LLM to generate a natural conversational response in French
+            greeting_detected = True
+            greeting_source = "keyword"
+        elif self.settings.enable_semantic_greeting:
+            try:
+                is_greet, sim = self.greeting_router.check(question)
+                if is_greet:
+                    greeting_detected = True
+                    greeting_source = "semantic"
+                    greeting_score = sim
+                    logger.info(f"Semantic greeting match (sim={sim:.3f})")
+            except Exception as e:
+                # Never let the router break the main pipeline.
+                logger.warning(f"Greeting router failed, continuing to RAG: {e}")
+
+        if greeting_detected:
+            logger.info(f"Detected greeting ({greeting_source}), returning conversational response")
             greeting_prompt = (
                 "You are an AI assistant for ACAPS (Autorité de Contrôle des Assurances et de la Prévoyance Sociale) in Morocco. "
                 "The user has just greeted you. "
@@ -175,15 +249,18 @@ Réponds uniquement sur la base du contexte ci-dessus :"""
                 "Keep it brief and professional. "
                 f"User greeting: '{question}'"
             )
-            
             answer = self._generate_conversational(greeting_prompt)
-            
             return RAGResponse(
                 answer=answer,
                 citations=[],
                 confidence=1.0,
                 context_used="",
-                metadata={"greeting": True, "model": "conversational-llm"}
+                metadata={
+                    "greeting": True,
+                    "greeting_source": greeting_source,
+                    "greeting_score": greeting_score,
+                    "model": "conversational-llm",
+                },
             )
 
         # Step 1: Embed the query
@@ -238,20 +315,101 @@ Réponds uniquement sur la base du contexte ci-dessus :"""
         # Step 4: Generate answer
         prompt = self.SYSTEM_PROMPT.format(context=context, question=question)
         answer = self._generate(prompt, context=context)
-        
+
+        # Step 5: Citation gating + parasitic-refusal cleaning.
+        #   • Pure refusal → drop citations (showing sources next to "Je ne
+        #     trouve pas..." misleads the user into thinking they back the
+        #     answer when they don't).
+        #   • Parasitic refusal sentence appended to a real answer → strip it
+        #     and keep the citations. The few-shot SYSTEM_PROMPT should
+        #     already prevent this, but smaller models still slip occasionally.
+        cleaned_answer, is_pure_refusal = self._clean_refusal(answer)
+
+        if is_pure_refusal:
+            logger.info("LLM emitted no-info fallback; dropping citations")
+            return RAGResponse(
+                answer=cleaned_answer,
+                citations=[],
+                confidence=0.0,
+                context_used=context,
+                metadata={
+                    "retrieval_count": len(search_results),
+                    "top_score": search_results[0].score if search_results else 0,
+                    "model": self.settings.vllm_model,
+                    "citations_gated": True,
+                },
+            )
+
+        cleaned_flag = cleaned_answer != answer
+        if cleaned_flag:
+            logger.info("Stripped parasitic refusal sentence from LLM answer")
+
         logger.info(f"Generated answer with {len(citations)} citations")
-        
+
         return RAGResponse(
-            answer=answer,
+            answer=cleaned_answer,
             citations=citations,
             confidence=avg_score,
             context_used=context,
             metadata={
                 "retrieval_count": len(search_results),
                 "top_score": search_results[0].score if search_results else 0,
-                "model": self.settings.vllm_model
+                "model": self.settings.vllm_model,
+                "refusal_cleaned": cleaned_flag,
             }
         )
+
+    # Sentences that look like the canned "no information" refusal — in FR/EN
+    # and common paraphrases the LLM produces. Used both for pure-refusal
+    # detection and for stripping parasitic trailing sentences.
+    _REFUSAL_PATTERNS = [
+        r"je ne trouve pas cette information[^.!?]*",
+        r"je ne dispose pas (?:de|d')[^.!?]*",
+        r"aucune information (?:n'est )?disponible[^.!?]*",
+        r"(?:l')?information n'est pas (?:présente|disponible|fournie)[^.!?]*",
+        r"i (?:cannot|can't|do not|don't) find[^.!?]*",
+        r"no (?:relevant )?information (?:is )?(?:available|found)[^.!?]*",
+    ]
+
+    @classmethod
+    def _clean_refusal(cls, answer: str):
+        """
+        Inspect the LLM answer for canned refusal sentences.
+
+        Returns (cleaned_answer, is_pure_refusal):
+          • is_pure_refusal=True when the answer is essentially only a refusal
+            (citations should be dropped by the caller).
+          • Otherwise, parasitic refusal sentences are stripped from the
+            answer and the cleaned text is returned with is_pure_refusal=False.
+        """
+        import re
+
+        if not answer or not answer.strip():
+            return answer or "", True
+
+        # Split into sentences while preserving non-whitespace content.
+        sentences = [s for s in re.split(r"(?<=[.!?])\s+", answer.strip()) if s.strip()]
+        if not sentences:
+            return answer.strip(), True
+
+        kept = []
+        dropped = []
+        for sentence in sentences:
+            lower = sentence.lower()
+            if any(re.search(p, lower) for p in cls._REFUSAL_PATTERNS):
+                dropped.append(sentence)
+            else:
+                kept.append(sentence)
+
+        kept_text = " ".join(kept).strip()
+
+        # Pure refusal: nothing else of substance remains.
+        # Threshold of 30 chars filters out filler like "Voici :" or "Bien sûr."
+        if not kept_text or len(kept_text) < 30:
+            # Return the original (single canonical sentence is fine UX-wise).
+            return answer.strip(), True
+
+        return kept_text, False
     
     def _generate(self, prompt: str, context: str = "") -> str:
         """
