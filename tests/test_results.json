@@ -1,0 +1,584 @@
+{
+  "🇫🇷 Basiques FR": [
+    {
+      "q": "Comment soumettre une réclamation ?",
+      "grade": "❌ ERROR",
+      "answer": "timed out",
+      "confidence": null,
+      "citations": 0,
+      "intent": null,
+      "elapsed": 180.3
+    },
+    {
+      "q": "Quelles sont les étapes pour déposer une réclamation ?",
+      "grade": "✅ conf=0.57 cit=3 intent=submit",
+      "answer": "Pour déposer une réclamation, vous devez suivre ces étapes :\n\n1. Sélectionnez le **secteur mutuelle** qui correspond à votre situation.\n2. Choisissez la **nature de la réclamation** (par exemple, acci",
+      "confidence": 0.5676722129185995,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 135.0
+    },
+    {
+      "q": "Quels documents peut-on joindre à une réclamation ?",
+      "grade": "✅ conf=0.55 cit=3 intent=None",
+      "answer": "À une réclamation, vous pouvez joindre des **pièces jointes**. Ces pièces peuvent être utilisées pour fournir plus d'informations ou de preuves concernant votre réclamation. Pour ajouter ces pièces, s",
+      "confidence": 0.5523702831489027,
+      "citations": 3,
+      "intent": null,
+      "elapsed": 45.0
+    },
+    {
+      "q": "Est-ce que l'email est obligatoire ?",
+      "grade": "🔄 conf=0.00 cit=0 intent=None",
+      "answer": "En tant qu'assistant du portail ACAPS, je suis spécialisé dans l'aide et la gestion des demandes sur ce site. \n\nPour répondre à votre question: L'email n'est généralement pas obligatoire pour soumettr",
+      "confidence": 0.0,
+      "citations": 0,
+      "intent": null,
+      "elapsed": 59.1
+    },
+    {
+      "q": "Comment suivre une réclamation ?",
+      "grade": "✅ conf=0.57 cit=3 intent=track",
+      "answer": "Pour suivre une réclamation, vous pouvez suivre ces étapes :\n\n1. Rendez-vous sur le portail ACAPS et recherchez la référence de votre réclamation ou l'email/numéro de téléphone utilisé lors de sa soum",
+      "confidence": 0.5701481681439651,
+      "citations": 3,
+      "intent": "track",
+      "elapsed": 70.3
+    },
+    {
+      "q": "Que faire après avoir reçu une réponse ?",
+      "grade": "✅ conf=0.42 cit=3 intent=track",
+      "answer": "Après avoir reçu une réponse, il est important de noter que si votre réclamation est au statut \"répondue\", vous recevez une réponse définitive. Vous pouvez alors clôturer la réclamation via le bouton ",
+      "confidence": 0.4226256823542343,
+      "citations": 3,
+      "intent": "track",
+      "elapsed": 40.6
+    },
+    {
+      "q": "Combien de temps pour réouvrir une réclamation ?",
+      "grade": "✅ conf=0.60 cit=3 intent=submit",
+      "answer": "Une réclamation peut être réouverte pendant 7 jours après avoir reçu une réponse de l'ACAPS. Après cette période, la réouverture n'est plus possible.",
+      "confidence": 0.5968704638035686,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 26.6
+    }
+  ],
+  "🇸🇦 Basiques AR": [
+    {
+      "q": "كيف يمكنني تقديم شكاية؟",
+      "grade": "✅ conf=0.46 cit=3 intent=submit",
+      "answer": "للإبلاغ عن مشكلة، يمكنك اتباع الخطوات التالية:\n\n1. قم بملء النموذج المخصص للإبلاغ عن الشكوى بالتفاصيل اللازمة.\n2. حدد نوع الشكوى ووصف المشكلة بدقة.\n3. أضف إذا لزم الأمر صور أو ملفات إضافية تدعم شكاواك",
+      "confidence": 0.4573082129332873,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 59.6
+    },
+    {
+      "q": "ما هي خطوات تقديم الشكاية؟",
+      "grade": "✅ conf=0.58 cit=3 intent=submit",
+      "answer": "للإجابة على سؤالك، سنقوم بتقسيم الخطوات إلى أجزاء صغيرة لكي تكون أكثر وضوحاً:\n\n1. يجب عليك الذهاب إلى موقع ACAPS.\n2. بعد الوصول، تأكد من أنك قمت بتنشيط خيار \"متابعة شكوى\" من الصفحة الرئيسية.\n3. بمجرد ",
+      "confidence": 0.5759025674826168,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 63.6
+    },
+    {
+      "q": "ما هي الوثائق التي يمكن إرفاقها؟",
+      "grade": "✅ conf=0.42 cit=3 intent=None",
+      "answer": "يمكن إرفاق الوثائق التالية مع طلبك للإحالة:\n\n1. **الملفات PDF**\n2. **الصور**",
+      "confidence": 0.4230982687999291,
+      "citations": 3,
+      "intent": null,
+      "elapsed": 22.0
+    },
+    {
+      "q": "هل البريد الإلكتروني إجباري؟",
+      "grade": "✅ conf=0.43 cit=1 intent=None",
+      "answer": "نعم، البريد الإلكتروني هو ضروري عند تقديم طلب أو م allegation. يجب عليك تقديم بريد إلكتروني صالح لل uso إذا كان ذلك متاحًا أثناء تقديم الطلب.",
+      "confidence": 0.43253339141209535,
+      "citations": 1,
+      "intent": null,
+      "elapsed": 13.6
+    },
+    {
+      "q": "كيف يمكنني تتبع الشكاية؟",
+      "grade": "✅ conf=0.52 cit=3 intent=submit",
+      "answer": "للتبسيط وإعطاءك تعليمات واضحة، سأشرح لك كيفية تتبع شكاتك باستخدام portail ACAPS:\n\n1. انتقل إلى الصفحة الرئيسية للportail.\n2. انقر على زر \"تتبع شكاية\" الموجود هناك.\n3. بمجرد أن تظهر لك قائمة الشكايات، ",
+      "confidence": 0.5151451822547258,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 41.6
+    },
+    {
+      "q": "ماذا أفعل بعد تلقي الرد؟",
+      "grade": "✅ conf=0.41 cit=1 intent=None",
+      "answer": "بعد تلقي الرد، يمكنك اتباع الخطوات التالية للوصول إلى حالة \"مغلقة\":\n\n1. إذا كان الرد قد تم تقديمه في الوقت المناسب (أي خلال 7 أيام)، قم بتفقد الرد ل verifion أنه يحتوي على المعلومات المطلوبة.\n2. إذا ك",
+      "confidence": 0.407894730567935,
+      "citations": 1,
+      "intent": null,
+      "elapsed": 59.3
+    },
+    {
+      "q": "كم المدة المتاحة لإعادة فتح الشكاية؟",
+      "grade": "✅ conf=0.56 cit=3 intent=submit",
+      "answer": "ال Réclamation يمكن إعادة فتحها خلال 7 أيام. بعد هذه الفترة، لن يتمكن المستخدم من إعادة فتح الشكوى مرة أخرى.",
+      "confidence": 0.5606772525952358,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 39.1
+    }
+  ],
+  "🎯 Reformulation FR": [
+    {
+      "q": "Je veux me plaindre, je fais comment ?",
+      "grade": "🔄 conf=0.00 cit=0 intent=None",
+      "answer": "Je suis ravi d'être ton assistant pour le portail ACAPS. Voici ce que tu peux faire :\n\n1. Pour soumettre une réclamation :\n   Tu peux commencer par aller directement à la Section 1 du portail. Là, il ",
+      "confidence": 0.0,
+      "citations": 0,
+      "intent": null,
+      "elapsed": 84.7
+    },
+    {
+      "q": "Où est le bouton pour déposer une plainte ?",
+      "grade": "✅ conf=0.60 cit=3 intent=submit",
+      "answer": "Le bouton pour déposer une plainte se trouve à l'étape 6 de la section \"Soumettre une Réclamation\" dans le guide du portail ACAPS. Voici les étapes à suivre :\n\n1. Vérifiez toutes les informations néce",
+      "confidence": 0.5980336939206151,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 78.2
+    },
+    {
+      "q": "Je peux envoyer une réclamation sans téléphone ?",
+      "grade": "✅ conf=0.50 cit=1 intent=None",
+      "answer": "Non, vous ne pouvez pas envoyer une réclamation sans un numéro de téléphone. Vous devez fournir un numéro de téléphone lors de la soumission de votre réclamation pour pouvoir être contacté(e). Veuille",
+      "confidence": 0.49903082847595215,
+      "citations": 1,
+      "intent": null,
+      "elapsed": 22.6
+    },
+    {
+      "q": "Comment voir l'état de mon dossier ?",
+      "grade": "🔄 conf=0.00 cit=0 intent=track",
+      "answer": "Je suis ravi de vous aider avec le portail ACAPS. Voici comment je peux vous assister :\n\n1. **Aide à soumettre une réclamation** (Section 1) - Je peux vous guider dans la création d'une nouvelle récla",
+      "confidence": 0.0,
+      "citations": 0,
+      "intent": "track",
+      "elapsed": 70.6
+    },
+    {
+      "q": "J'ai déjà envoyé une réclamation, comment la consulter ?",
+      "grade": "✅ conf=0.50 cit=3 intent=None",
+      "answer": "Pour consulter votre réclamation qui a été déjà envoyée :\n\n1. Veuillez entrer le numéro de référence de votre réclamation dans le champ prévu à cet effet.\n2. Vous pouvez également utiliser un email ou",
+      "confidence": 0.499328379809709,
+      "citations": 3,
+      "intent": null,
+      "elapsed": 68.6
+    },
+    {
+      "q": "Est-ce que je peux modifier ma réclamation après envoi ?",
+      "grade": "✅ conf=0.49 cit=3 intent=track",
+      "answer": "Oui, vous pouvez modifier votre réclamation après l'avoir envoyée. Voici les étapes à suivre :\n\n1. Vérifiez toutes les informations de votre réclamation.\n2. Cliquez sur **BACK** si une modification es",
+      "confidence": 0.48536803288952846,
+      "citations": 3,
+      "intent": "track",
+      "elapsed": 49.0
+    }
+  ],
+  "🎯 Reformulation AR (Darija)": [
+    {
+      "q": "بغيت ندير شكاية، كيفاش ندير؟",
+      "grade": "🔄 conf=0.00 cit=0 intent=submit",
+      "answer": "Salut! Je suis spécialisé dans l'utilisation du portail ACAPS, et je peux vous aider avec plusieurs tâches basées sur vos besoins. \n\n1. Si vous souhaitez soumettre une réclamation, nous pouvons passer",
+      "confidence": 0.0,
+      "citations": 0,
+      "intent": "submit",
+      "elapsed": 110.2
+    },
+    {
+      "q": "فين نلقى زر تقديم الشكاية؟",
+      "grade": "✅ conf=0.62 cit=3 intent=submit",
+      "answer": "في البداية، لابد من تصفح الصفحة الرئيسية لل-portail ACAPS. ستحتوى هذه الصفحة على زر \"تقديم شكاية\". بعد النقر على هذا الزر، ستظهر لك صفحة جديدة حيث يمكنك إدخال معلومات حول الشكوى الخاصة بك.",
+      "confidence": 0.6165140244774326,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 53.7
+    },
+    {
+      "q": "واش نقدر ندير شكاية بلا رقم الهاتف؟",
+      "grade": "✅ conf=0.53 cit=3 intent=submit",
+      "answer": "عذرًا، لكنني لست قادر على مساعدتك في هذا السؤال لأن المعلومات المطلوبة موجودة فقط باللغة العربية. يبدو أن السؤال يتحدث عن كيفية إدارة شكاية دون استخدام رقم الهاتف، ولكن لا يوجد تفصيل كافٍ في النص المق",
+      "confidence": 0.5347751300399589,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 34.3
+    },
+    {
+      "q": "كيف أطلع على حالة الشكاية ديالي؟",
+      "grade": "✅ conf=0.57 cit=3 intent=submit",
+      "answer": "للرجوع إلى حالة شكايتكم، يرجى اتباع الخطوات التالية:\n\n1. قم بالدخول إلى الموقع الإلكتروني لل-portail ACAPS.\n2. انقر على \"Suivre une réclamation\" من الصفحة الرئيسية.\n3. أدخل رقم الشكوى أو الرمز الخاص ب",
+      "confidence": 0.5658721273029398,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 52.0
+    },
+    {
+      "q": "رسلت شكاية، كيف نشوف التفاصيل ديالها؟",
+      "grade": "✅ conf=0.49 cit=3 intent=submit",
+      "answer": "للتحقق من تفاصيل الشكوى، سأرسل لك الخطوات اللازمة للوصول إلى المعلومات:\n\n1. أدخل رقم الرسالة (الréférence) أو البريد الإلكتروني أو الهاتف المستخدم عند تقديم الشكوى.\n2. انقر على \"بحث\" بعد إدخال البيانا",
+      "confidence": 0.48554710547129315,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 41.0
+    },
+    {
+      "q": "واش يمكن نبدل الشكاية من بعد ما نرسلها؟",
+      "grade": "✅ conf=0.53 cit=3 intent=submit",
+      "answer": "عذراً، لكن المعلومات المقدمة في هذا النص لا تشمل كيفية تعديل شكاية بعد إرسالها. يبدو أن السؤال يشير إلى دولة عربية معينة (ربما الدارجة العربية) وهو سؤال حول كيفية التعديل على الشكوى بعد إرسالها. ومع ذ",
+      "confidence": 0.5256060055851817,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 48.0
+    }
+  ],
+  "⚠️ Pièges FR": [
+    {
+      "q": "Puis-je joindre un fichier de 10 Mo ?",
+      "grade": "✅ conf=1.00 cit=0 intent=—",
+      "answer": "Oufff! Ouah, salam alaikum ewsakom. Assalaamu Aleikoum. Bien sûr, vous pouvez envoyer votre fichier de 10Mo. Veuillez me préciser quel type de document il s'agit afin que je puisse l'intégrer correcte",
+      "confidence": 1.0,
+      "citations": 0,
+      "intent": null,
+      "elapsed": 27.9
+    },
+    {
+      "q": "Puis-je réouvrir une réclamation après 10 jours ?",
+      "grade": "✅ conf=0.60 cit=3 intent=submit",
+      "answer": "Non, vous ne pouvez pas réouvrir une réclamation après 7 jours. Après cette période, la réouverture n'est plus possible selon les règles du portail ACAPS.",
+      "confidence": 0.5966199314177889,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 52.6
+    },
+    {
+      "q": "Est-ce que le numéro de téléphone est obligatoire ?",
+      "grade": "🔄 conf=0.00 cit=0 intent=None",
+      "answer": "Je suis spécialisé dans l'utilisation du portail ACAPS et je peux certainement vous aider avec vos questions concernant les réclamations, leur suivi ou même répondre à toute autre information spécifiq",
+      "confidence": 0.0,
+      "citations": 0,
+      "intent": null,
+      "elapsed": 69.0
+    },
+    {
+      "q": "Puis-je soumettre une réclamation sans accepter les conditions ?",
+      "grade": "✅ conf=0.49 cit=3 intent=submit",
+      "answer": "D'après le guide fourni, il n'y a aucune information concernant l'acceptation des conditions avant de soumettre une réclamation. Le processus de soumission est détaillé dans la section \"Soumettre une ",
+      "confidence": 0.4863861116666477,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 61.8
+    },
+    {
+      "q": "Est-ce que la réclamation reste ouverte indéfiniment ?",
+      "grade": "✅ conf=0.46 cit=1 intent=None",
+      "answer": "La réclamation ne reste pas ouverte indéfiniment. Si elle est au statut \"répondue\", elle se clôture automatiquement après 7 jours sans réponse de votre part.",
+      "confidence": 0.45662188529968584,
+      "citations": 1,
+      "intent": null,
+      "elapsed": 11.2
+    }
+  ],
+  "⚠️ Pièges AR": [
+    {
+      "q": "هل يمكنني رفع ملف حجمه 10 ميغا؟",
+      "grade": "🔄 conf=0.00 cit=0 intent=None",
+      "answer": "Je suis spécialisé dans l'utilisation du portail ACAPS. Voici comment je peux vous aider :\n\n1. Aider à soumettre une réclamation (Section 1) :\n   Si votre question concerne la procédure pour soumettre",
+      "confidence": 0.0,
+      "citations": 0,
+      "intent": null,
+      "elapsed": 86.2
+    },
+    {
+      "q": "هل يمكن إعادة فتح الشكاية بعد 10 أيام؟",
+      "grade": "✅ conf=0.59 cit=3 intent=submit",
+      "answer": "وفقا للدليل المقدم، لا يمكن إعادة فتح الشكوى بعد 7 أيام فقط. إذا تم فتح الشكوى وفقا لهذه اللوائح، فإن إعادة الفتح ممكن لمدة إضافية تصل إلى 7 أيام فقط من تاريخ الفتح الأول.",
+      "confidence": 0.590195930311483,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 58.1
+    },
+    {
+      "q": "هل رقم الهاتف إجباري؟",
+      "grade": "✅ conf=0.43 cit=1 intent=None",
+      "answer": "عذراً، لكنني لست قادراً على تقديم المعلومات المطلوبة منك بناءً على السؤال الذي طرحته. يبدو أن سؤالك يدور حول الإلزام بوضع رقم الهاتف في عملية البحث عن معلومات حول الردود أو التعليقات. ومع ذلك، لا يوجد",
+      "confidence": 0.433344211181654,
+      "citations": 1,
+      "intent": null,
+      "elapsed": 30.7
+    },
+    {
+      "q": "هل يمكن تقديم شكاية بدون الموافقة على الشروط؟",
+      "grade": "✅ conf=0.48 cit=3 intent=submit",
+      "answer": "عذراً،但我无法找到关于在不接受条款的情况下提交投诉的信息。根据提供的ACAPS指南，我建议你按照正常流程提交你的投诉，并确保阅读并同意所有相关条款和条件。如果你有具体的问题或需要进一步的帮助，请详细说明。",
+      "confidence": 0.4829050800780748,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 34.2
+    },
+    {
+      "q": "هل تبقى الشكاية مفتوحة إلى الأبد؟",
+      "grade": "✅ conf=0.44 cit=3 intent=submit",
+      "answer": "لا، لا تبقى الشكاية مفتوحة إلى الأبد. إذا تم إغلاق الشكوى من قبل النظام أو المستخدم بناءً على التحقق المطلوب، فإن الشكوى ستكون في حالة \"مغلقة\".",
+      "confidence": 0.4350768251818023,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 19.0
+    }
+  ],
+  "🧠 Scénario FR": [
+    {
+      "q": "J'ai soumis une réclamation mais je n'ai pas de réponse, que faire ?",
+      "grade": "✅ conf=0.41 cit=3 intent=track",
+      "answer": "Si vous avez soumis une réclamation et que vous n'avez pas reçu de réponse, voici les étapes à suivre :\n\n1. Vérifiez si votre message a été envoyé correctement en vérifiant le champ \"Message\" pour s'a",
+      "confidence": 0.40885119007656745,
+      "citations": 3,
+      "intent": "track",
+      "elapsed": 79.9
+    },
+    {
+      "q": "Je n'ai pas la référence de ma réclamation, comment la retrouver ?",
+      "grade": "🔄 conf=0.00 cit=0 intent=track",
+      "answer": "Je suis spécialisé dans l'utilisation du portail ACAPS et je peux vous aider avec vos demandes concernant les réclamations. \n\nPour trouver votre réclamation lorsque vous ne savez plus son numéro, voic",
+      "confidence": 0.0,
+      "citations": 0,
+      "intent": "track",
+      "elapsed": 75.2
+    },
+    {
+      "q": "Je veux ajouter un document après envoi, est-ce possible ?",
+      "grade": "✅ conf=0.44 cit=1 intent=None",
+      "answer": "Oui, il est possible d'ajouter un document après l'envoi de votre message. Voici comment vous pouvez le faire :\n\n1. Réexaminez votre message pour s'assurer qu'il contient toutes les informations néces",
+      "confidence": 0.4359090030193329,
+      "citations": 1,
+      "intent": null,
+      "elapsed": 57.2
+    },
+    {
+      "q": "J'ai dépassé 7 jours, puis-je encore répondre ?",
+      "grade": "✅ conf=0.48 cit=2 intent=None",
+      "answer": "Non, après avoir dépassé les 7 jours depuis votre dernière réponse ou notification sur la réclamation, vous ne pouvez plus répondre directement à l'ACAPS. Le statut de votre réclamation deviendra alor",
+      "confidence": 0.48414778885293647,
+      "citations": 2,
+      "intent": null,
+      "elapsed": 38.6
+    },
+    {
+      "q": "Je n'ai pas reçu le questionnaire de satisfaction, pourquoi ?",
+      "grade": "✅ conf=0.55 cit=0 intent=satisfaction",
+      "answer": "Je comprends votre inquiétude. L'ACAPS est un outil conçu pour faciliter la communication entre les utilisateurs et nos services. \n\n1. Je peux aider à soumettre une réclamation dans la section 1 du po",
+      "confidence": 0.5459484403194895,
+      "citations": 0,
+      "intent": "satisfaction",
+      "elapsed": 103.8
+    }
+  ],
+  "🧠 Scénario AR": [
+    {
+      "q": "قدمت شكاية ولم أتلق أي رد، ماذا أفعل؟",
+      "grade": "✅ conf=0.42 cit=3 intent=submit",
+      "answer": "في هذه الحالة، يمكنك اتباع الخطوات التالية للتعامل مع الشكوى التي لم ترد عليها:\n\n1. أعد تقديم الشكوى من خلال النموذج المتاح على الموقع.\n2. إذا كنت قد سجلت مديراً لك، فتأكد من أن المعلومات المقدمة دقيق",
+      "confidence": 0.4169246076918429,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 78.1
+    },
+    {
+      "q": "ضيعت رقم المرجع ديال الشكاية، كيفاش نلقاه؟",
+      "grade": "✅ conf=0.57 cit=3 intent=submit",
+      "answer": "للرجوع إلى الرقم المرجعي للشكاية، يرجى اتباع الخطوات التالية:\n\n1. أدخل الرقم المرجعي للشكاية الذي تذكرته في الخانة المخصصة لذلك.\n2. إذا كنت لا تعرف الرقم المرجعي، يمكنك البحث عن الشكوى من خلال إدخال ب",
+      "confidence": 0.5715069009587138,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 61.7
+    },
+    {
+      "q": "بغيت نضيف وثيقة من بعد الإرسال، واش ممكن؟",
+      "grade": "✅ conf=0.51 cit=3 intent=None",
+      "answer": "للإضافة إلى الوثائق بعد إرسال الرسالة، يرجى اتباع الخطوات التالية:\n\n1. قم بإعادة فتح رسالةك التي أرسلتها.\n2. في الجزء العلوي من الرسالة،你会发现 زر \"أضف وثيقة\" أو \"Add Document\".\n3. انقر على هذا الزر لفتح",
+      "confidence": 0.5131981021808563,
+      "citations": 3,
+      "intent": null,
+      "elapsed": 56.9
+    },
+    {
+      "q": "فاتت 7 أيام، واش باقي نقدر نجاوب؟",
+      "grade": "✅ conf=0.46 cit=2 intent=None",
+      "answer": "بعد مضي 7 أيام من رد الأكاس (ACAPS)، إذا لم ترد على الرد، فإن حالة الرفع ستغلق automáticamente. في هذه الحالة، يجب أن تتواصل مباشرةً مع الأكاس للحصول على مزيد من المعلومات أو التوضيحات حول كيفية التعا",
+      "confidence": 0.4587752249261927,
+      "citations": 2,
+      "intent": null,
+      "elapsed": 33.4
+    },
+    {
+      "q": "ما توصلتش باستبيان الرضا، علاش؟",
+      "grade": "✅ conf=0.52 cit=3 intent=None",
+      "answer": "الاستبيان الرضائي قد وصل إليك لأنه تم تحديد إمكانية تلقيه في问卷 الرئيسي الذي قمت بملئه. يرجى التحقق من الإجابات التي أدخلتها وأكمل الاستبيان إذا لزم الأمر.",
+      "confidence": 0.5152065539459303,
+      "citations": 3,
+      "intent": null,
+      "elapsed": 34.4
+    }
+  ],
+  "🔍 Multi-étapes FR": [
+    {
+      "q": "Quelles sont les informations demandées dans la première étape ?",
+      "grade": "✅ conf=0.50 cit=3 intent=None",
+      "answer": "Dans la première étape du processus de soumission d'une réclamation sur le portail ACAPS, vous êtes invité à choisir deux éléments clés :\n\n1. **Choisissez la mutuelle** : Cela signifie que vous devez ",
+      "confidence": 0.4954067372039921,
+      "citations": 3,
+      "intent": null,
+      "elapsed": 44.8
+    },
+    {
+      "q": "Quelle est la différence entre les cas assurance et prévoyance ?",
+      "grade": "🔄 conf=0.00 cit=0 intent=None",
+      "answer": "Je suis spécialisé dans l'utilisation du portail ACAPS, ce qui me permet de vous aider avec diverses tâches liées au système. \n\nEn ce qui concerne votre question spécifiquement sur la différence entre",
+      "confidence": 0.0,
+      "citations": 0,
+      "intent": null,
+      "elapsed": 82.2
+    },
+    {
+      "q": "Que contient la timeline d'une réclamation ?",
+      "grade": "✅ conf=0.55 cit=3 intent=None",
+      "answer": "La timeline d'une réclamation contient le **état actuel de la réclamation**. Elle montre comment la situation a évolué depuis son envoi jusqu'à présent, y compris les différentes étapes et communicati",
+      "confidence": 0.5482555983119407,
+      "citations": 3,
+      "intent": null,
+      "elapsed": 58.6
+    },
+    {
+      "q": "Quelles actions peut-on faire après consultation d'une réclamation ?",
+      "grade": "✅ conf=0.59 cit=3 intent=None",
+      "answer": "Après avoir consulté une réclamation, vous pouvez :\n\n1. Envoyer un message à l'ACAPS pour demander plus d'informations ou résoudre une question.\n2. Ajouter de nouvelles pièces justificatives si nécess",
+      "confidence": 0.5916076898574829,
+      "citations": 3,
+      "intent": null,
+      "elapsed": 33.9
+    }
+  ],
+  "🔍 Multi-étapes AR": [
+    {
+      "q": "ما هي المعلومات المطلوبة في المرحلة الأولى؟",
+      "grade": "✅ conf=0.47 cit=3 intent=None",
+      "answer": "للإجابة على هذا السؤال، يجب أن نستنير من معلومات موجودة في الجدول الموجود في التعليمات. وفقًا للجدول، المرحلة الأولى تتعلق بـ \"Étape 1 : Consultation\". \n\nفي هذه المرحلة، يمكنك:\n- مشاهدة **التسلسل الزم",
+      "confidence": 0.4664407564642578,
+      "citations": 3,
+      "intent": null,
+      "elapsed": 65.6
+    },
+    {
+      "q": "ما الفرق بين حالة التأمين وحالة الاحتياط؟",
+      "grade": "🔄 conf=0.00 cit=0 intent=None",
+      "answer": "Je suis spécialisé dans l'utilisation du portail ACAPS, et je peux vous aider avec différents aspects du système. \n\nPour votre question spécifique :\n\n1. **Comment puis-je soumettre une réclamation ?**",
+      "confidence": 0.0,
+      "citations": 0,
+      "intent": null,
+      "elapsed": 64.9
+    },
+    {
+      "q": "ماذا تحتوي صفحة تتبع الشكاية؟",
+      "grade": "✅ conf=0.68 cit=3 intent=submit",
+      "answer": "صفحة تتبع الشكوى تحتوي على معلومات حول حالة الشكوى، بما في ذلك الرمز (الرقم) للشكاوى وطريقة التواصل المستخدمة عند تقديم الشكوى. يمكنك البحث عن الشكوى من خلال إدخال الرمز أو البريد الإلكتروني أو رقم ال",
+      "confidence": 0.6782128810937058,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 55.7
+    },
+    {
+      "q": "ما هي العمليات التي يمكن القيام بها بعد عرض الشكاية؟",
+      "grade": "✅ conf=0.50 cit=3 intent=submit",
+      "answer": "بعد عرض الشكوى، يمكنك اتباع الخطوات التالية:\n\n1. إذا كنت ترغب في إرسال رسالة إلى ACAPS، قم بإدخال رسالتك وحفظها.\n2. إذا كان هناك حاجة لتقديم مزيد من الوثائق أو الأدلة، حاول تقديمها الآن.\n3. بمجرد أن ي",
+      "confidence": 0.5018947912269679,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 45.9
+    }
+  ],
+  "🧩 Bruit FR+Darija mix": [
+    {
+      "q": "Ana bghit ndir reclamation fin نمشي ؟",
+      "grade": "✅ conf=1.00 cit=0 intent=—",
+      "answer": "Coucou! Bien sûr, je peux vous aider sur le portail ACAPS. Pourrais-je savoir quel type de réclamation vous avez ? En français ou en arabe serait parfait pour commencer.",
+      "confidence": 1.0,
+      "citations": 0,
+      "intent": null,
+      "elapsed": 20.9
+    },
+    {
+      "q": "wach khasni email wla tel suffit ؟",
+      "grade": "🔄 conf=0.00 cit=0 intent=None",
+      "answer": "Je suis spécialisé dans l'utilisation du portail ACAPS pour aider les utilisateurs à obtenir une assistance efficace. Concernant votre question :\n\n1. Pour soumettre une réclamation, il est recommandé ",
+      "confidence": 0.0,
+      "citations": 0,
+      "intent": null,
+      "elapsed": 70.4
+    },
+    {
+      "q": "j'ai perdu la référence wach n9der nrecuperiha ?",
+      "grade": "🔄 conf=0.00 cit=0 intent=track",
+      "answer": "Je suis ravi de vous aider avec le portail ACAPS. Malheureusement, je ne peux pas directement résoudre votre problème concernant la référence WACH N9DER pour le système d'enregistrement de réclamation",
+      "confidence": 0.0,
+      "citations": 0,
+      "intent": "track",
+      "elapsed": 59.9
+    },
+    {
+      "q": "fin nلقى suivi dial dossier ?",
+      "grade": "✅ conf=0.46 cit=3 intent=track",
+      "answer": "Je suis désolé, il semble qu'il y ait eu une confusion dans votre question. Selon le guide fourni, pour suivre un dossier de réclamation sur le portail ACAPS, vous devez d'abord rechercher la réclamat",
+      "confidence": 0.4550894211271456,
+      "citations": 3,
+      "intent": "track",
+      "elapsed": 81.4
+    }
+  ],
+  "🧩 Bruit AR mix": [
+    {
+      "q": "بغيت نتابع الشكاية ديالي فين نمشي؟",
+      "grade": "✅ conf=0.42 cit=2 intent=submit",
+      "answer": "للقيام بوشكو، نايم عليك كده:\n\n1. قم بالرجوع إلى الصفحة الرئيسية للportail.\n2. اضغط على زر \"تابع شكاية\" الموجود هناك.\n\nبعد ذلك، ستحصل على خانة تسمى \"أدخل رقم الشكوى\"، حيث يجب أن تكتب الرقم الذي تم إعطا",
+      "confidence": 0.41504175471658694,
+      "citations": 2,
+      "intent": "submit",
+      "elapsed": 37.9
+    },
+    {
+      "q": "واش خاصني بجوج email ورقم الهاتف؟",
+      "grade": "✅ conf=0.48 cit=1 intent=None",
+      "answer": "للخاصة، يجب أن تقدم الإيميل أو رقم الهاتف الذي تم استخدامه عند تقديم الжалب. ثم انقر على \"بحث\". بعد ظهور الجدول، انقر على \"التفاصيل\".",
+      "confidence": 0.48065094592127067,
+      "citations": 1,
+      "intent": null,
+      "elapsed": 21.5
+    },
+    {
+      "q": "كيفاش نشوف الحالة ديال الشكاية؟",
+      "grade": "✅ conf=0.45 cit=3 intent=submit",
+      "answer": "للتحقق من حالة شكايتكم، يرجى اتباع الخطوات التالية:\n\n1. قم بتسجيل الدخول إلى حسابك في portail ACAPS.\n2. بعد ذلك، انقر على زر \"إبلاغ مشكل جديد\" الموجود في الجزء العلوي الأيمن من الصفحة الرئيسية.\n3. أدخ",
+      "confidence": 0.4536208738108433,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 51.5
+    },
+    {
+      "q": "واش نقدر نعاود نفتح الشكاية؟",
+      "grade": "✅ conf=0.46 cit=3 intent=submit",
+      "answer": "عذراً، لكنني لست متأكدًا من فهم سؤالك. هل يمكنك إعادة صياغة السؤال أو طرح سؤال توضيحي قصير للحصول على المساعدة المطلوبة؟ قد يكون سؤالك يتعلق بفتح شكاية مرة أخرى، ولكن لم يتم ذكر ذلك في المعلومات المقد",
+      "confidence": 0.4621364760503212,
+      "citations": 3,
+      "intent": "submit",
+      "elapsed": 17.5
+    }
+  ]
+}
