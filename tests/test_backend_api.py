@@ -5,6 +5,7 @@ Tests endpoints, engine, and models.
 import pytest
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -117,7 +118,7 @@ class TestRAGEngine:
     
     def test_engine_health_check_mock(self):
         from backend_api.app.engine import RAGEngine
-        
+
         engine = RAGEngine(use_mock=True)
         health = engine.health_check()
         
@@ -125,6 +126,83 @@ class TestRAGEngine:
         assert "llm" in health
         assert "embedder" in health
         assert health["llm"] is True
+
+    def test_document_only_response_when_no_results(self):
+        from backend_api.app.engine import RAGEngine
+
+        engine = RAGEngine(use_mock=True)
+        engine._embedder = SimpleNamespace(embed_query=lambda _: [0.1, 0.2, 0.3])
+        engine._vector_store = SimpleNamespace(
+            hybrid_search=lambda **kwargs: [],
+            search_by_keyword=lambda **kwargs: [],
+        )
+
+        response = engine.query("c quoi l evenement actuel sur ville d eMeknes")
+
+        assert response.metadata["source"] == "document_only_no_match"
+        assert response.metadata["grounding_reason"] == "no_search_results"
+        assert response.citations == []
+        assert "documents ingestes" in response.answer
+
+    def test_document_only_response_for_out_of_scope_query(self):
+        from backend_api.app.engine import RAGEngine
+        from data_ingestion.vector_store import SearchResult
+
+        engine = RAGEngine(use_mock=True)
+        engine._embedder = SimpleNamespace(embed_query=lambda _: [0.1, 0.2, 0.3])
+        engine._vector_store = SimpleNamespace(
+            hybrid_search=lambda **kwargs: [
+                SearchResult(
+                    id="1",
+                    score=0.28,
+                    text="Pour soumettre une reclamation, cliquez sur Nouvelle reclamation.",
+                    file_name=engine.PORTAL_FILE,
+                    header_path="Section 1",
+                    url_slug="",
+                    base_url="",
+                    metadata={},
+                )
+            ],
+            search_by_keyword=lambda **kwargs: [],
+        )
+
+        response = engine.query("c quoi l evenement actuel sur ville d eMeknes")
+
+        assert response.metadata["source"] == "document_only_no_match"
+        assert response.metadata["grounding_reason"] == "outside_portal_scope"
+        assert response.citations == []
+
+    def test_portal_question_still_uses_retrieved_documents(self):
+        from backend_api.app.engine import RAGEngine
+        from data_ingestion.vector_store import SearchResult
+
+        engine = RAGEngine(use_mock=True)
+        engine._embedder = SimpleNamespace(embed_query=lambda _: [0.1, 0.2, 0.3])
+        engine._vector_store = SimpleNamespace(
+            hybrid_search=lambda **kwargs: [
+                SearchResult(
+                    id="1",
+                    score=0.82,
+                    text="Cliquez sur Nouvelle reclamation puis remplissez le formulaire.",
+                    file_name=engine.PORTAL_FILE,
+                    header_path="Section 1 - Soumettre une reclamation",
+                    url_slug="",
+                    base_url="",
+                    metadata={},
+                )
+            ],
+            search_by_keyword=lambda **kwargs: [],
+        )
+        engine._generate = lambda prompt, context="": (
+            "Pour soumettre une reclamation, cliquez sur Nouvelle reclamation puis remplissez le formulaire."
+        )
+
+        response = engine.query("Comment soumettre une reclamation ?")
+
+        assert response.citations
+        assert response.metadata["intent"] == "submit"
+        assert response.metadata["retrieval_count"] == 1
+        assert response.answer.startswith("Pour soumettre une reclamation")
 
 
 class TestAPIEndpoints:

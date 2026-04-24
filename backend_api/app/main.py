@@ -2,6 +2,7 @@
 Main FastAPI Application for Atlas-RAG
 API endpoints for chat, health, and administration.
 """
+import json
 import logging
 import uuid
 from typing import Optional
@@ -10,7 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from .config import get_settings, Settings
 from .models import (
@@ -187,7 +188,12 @@ async def chat(
         raise HTTPException(status_code=500, detail="Error processing query")
     
     # Step 3: Output guardrails — skip for redirect/fallback responses (no context)
-    is_redirect = rag_response.metadata.get("source") in ("general_redirect", "llm_general_knowledge")
+    is_redirect = rag_response.metadata.get("source") in (
+        "general_redirect",
+        "llm_general_knowledge",
+        "document_only_no_match",
+        "document_only_unverified",
+    )
     if not is_redirect:
         output_check = guardrails.check_output(
             response=rag_response.answer,
@@ -223,6 +229,61 @@ async def chat(
         confidence=rag_response.confidence,
         conversation_id=conversation_id,
         metadata=rag_response.metadata
+    )
+
+
+@app.post("/chat/stream", tags=["Chat"])
+async def chat_stream(
+    request: QueryRequest,
+    engine: RAGEngine = Depends(get_rag_engine),
+    guardrails: Guardrails = Depends(get_guardrails_instance),
+):
+    """
+    Stream a chat response as Server-Sent Events.
+
+    Events:
+      - `meta`:  citations, confidence, metadata (emitted once, before tokens)
+      - `token`: incremental answer text (emitted many times)
+      - `done`:  terminal event
+      - `error`: fatal error, terminal
+    """
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+    logger.info(f"[{conversation_id}] Streaming query: {request.question[:100]}...")
+
+    input_check = guardrails.check_input(request.question)
+
+    def sse(event: str, data: dict) -> str:
+        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+    def event_stream():
+        yield sse("start", {"conversation_id": conversation_id})
+
+        if input_check.should_block:
+            logger.warning(f"[{conversation_id}] Input blocked: {input_check.blocked_reason}")
+            yield sse("meta", {
+                "citations": [],
+                "confidence": 0.0,
+                "metadata": {"blocked": True, "reason": input_check.blocked_reason.value},
+            })
+            yield sse("token", {"text": guardrails.get_blocked_response(input_check.blocked_reason)})
+            yield sse("done", {})
+            return
+
+        try:
+            for event, payload in engine.stream_query(request.question):
+                yield sse(event, payload)
+        except Exception as exc:
+            logger.error(f"[{conversation_id}] Stream error: {exc}", exc_info=True)
+            yield sse("error", {"message": "internal_error"})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

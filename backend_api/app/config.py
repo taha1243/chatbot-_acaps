@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # LLM Inference Server (Ollama, vLLM, OpenRouter, or OpenAI-compatible)
     vllm_url: str = "http://localhost:11434/v1"  # Default to Ollama
     vllm_api_key: str = "ollama"  # Ollama doesn't need a real key
-    vllm_model: str = "qwen2.5:7b"  # Ollama model name
+    vllm_model: str = "qwen2.5:3b"  # Ollama model name
     
     # LLM Provider: "ollama", "vllm", "openai", "openrouter"
     llm_provider: str = "ollama"
@@ -42,14 +42,16 @@ class Settings(BaseSettings):
     use_reranker: bool = True
     
     # RAG Configuration
-    # Note: BGE-M3 similarity scores typically range 0.4-0.6, so threshold must be lower
-    similarity_threshold: float = 0.40
-    top_k_results: int = 5
+    # BGE-M3 scores depend on chunk size. For section-level chunks (~2k chars),
+    # relevant matches typically score 0.25-0.45. Keep threshold low; the intent
+    # filter in engine.py already scopes results to the correct section.
+    similarity_threshold: float = 0.25
+    top_k_results: int = 3
     max_context_length: int = 8192
     
     # Generation Settings
     temperature: float = 0.0
-    max_tokens: int = 1024
+    max_tokens: int = 500
     
     # Guardrails
     enable_guardrails: bool = False

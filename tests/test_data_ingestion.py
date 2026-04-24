@@ -60,6 +60,7 @@ Content of section 2.
         parser = MarkdownParser()
         assert parser is not None
         assert parser.default_base_url == ""
+        assert parser.max_split_level == 2
         
         parser_with_url = MarkdownParser(default_base_url="https://test.com")
         assert parser_with_url.default_base_url == "https://test.com"
@@ -99,7 +100,7 @@ Content of section 2.
     
     def test_parse_file_preserves_hierarchy(self, temp_md_file):
         """Test hierarchical header paths."""
-        parser = MarkdownParser()
+        parser = MarkdownParser(max_split_level=3)
         chunks = parser.parse_file(temp_md_file)
         
         # Find subsection chunk

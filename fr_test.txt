@@ -1,0 +1,429 @@
+event: start
+data: {"conversation_id": "0dc2efbb-b3ee-43f9-9833-4c6c3269f47a"}
+
+event: meta
+data: {"citations": [{"title": "Guide d'utilisation – Portail E-Réclamation ACAPS", "url": "", "score": 0.3825673460960388, "snippet": "> **Source :** Guide officiel du Portail Réclamant ACAPS  \n> **Domaine :** Assurance / Prévoyance  \n> **Public cible :** Citoyens souhaitant déposer ou suivre une réclamation en ligne\n\n---"}, {"title": "Guide d'utilisation – Portail E-Réclamation ACAPS > 5. Points importants à retenir", "url": "", "score": 0.3591216802597046, "snippet": "- Le **numéro de référence** généré à la soumission est indispensable pour le suivi.\n- La vérification d'identité par **code OTP** est requise lors de la soumission et du suivi.\n- Les pièces jointes ne doivent pas dépasser **5 Mo** au total.\n- La **réouverture** d'une réclamation n'est autorisée qu'**une seule fois**.\n- Une réclamation **clôturée** ne peut plus être réouverte.\n- Le questionnaire d..."}, {"title": "Guide d'utilisation – Portail E-Réclamation ACAPS > 1. Introduction", "url": "", "score": 0.2896546721458435, "snippet": "### Objectif du portail\n\nLe portail E-Réclamation ACAPS permet aux citoyens de :\n\n- Soumettre une nouvelle réclamation (assurance ou prévoyance)\n- Suivre l'état d'avancement d'une réclamation existante\n\n### Accès au portail\n\nLe portail est accessible via un lien web dédié. La page d'accueil présente deux actions principales :\n\n1. **Soumettre une réclamation**\n2. **Suivre une réclamation**\n\nL'inter..."}, {"title": "Guide d'utilisation – Portail E-Réclamation ACAPS > 4. Résumé des étapes clés", "url": "", "score": 0.2665940523147583, "snippet": "### Soumission d'une réclamation\n\n| Étape | Action |\n|-------|--------|\n| 0 | Choisir le type : Assurance ou Prévoyance |\n| 1 | Renseigner les informations personnelles + valider l'email (OTP) |\n| 2 | Sélectionner l'entreprise, la catégorie et le motif |\n| 3 | Rédiger le message et joindre les documents (max 5 Mo) |\n| 4 | Répondre au questionnaire obligatoire |\n| 5 | Vérifier le récapitulatif et c..."}], "confidence": 0.3244844377040863, "metadata": {"retrieval_count": 4, "top_score": 0.3825673460960388, "model": "qwen2.5:3b", "intent": "submit"}}
+
+event: token
+data: {"text": "Pour"}
+
+event: token
+data: {"text": " sou"}
+
+event: token
+data: {"text": "met"}
+
+event: token
+data: {"text": "tre"}
+
+event: token
+data: {"text": " une"}
+
+event: token
+data: {"text": " nouvelle"}
+
+event: token
+data: {"text": " ré"}
+
+event: token
+data: {"text": "clamation"}
+
+event: token
+data: {"text": " sur"}
+
+event: token
+data: {"text": " le"}
+
+event: token
+data: {"text": " port"}
+
+event: token
+data: {"text": "ail"}
+
+event: token
+data: {"text": " AC"}
+
+event: token
+data: {"text": "APS"}
+
+event: token
+data: {"text": ","}
+
+event: token
+data: {"text": " su"}
+
+event: token
+data: {"text": "ive"}
+
+event: token
+data: {"text": "z"}
+
+event: token
+data: {"text": " ces"}
+
+event: token
+data: {"text": " ét"}
+
+event: token
+data: {"text": "apes"}
+
+event: token
+data: {"text": " :\n\n"}
+
+event: token
+data: {"text": "1"}
+
+event: token
+data: {"text": "."}
+
+event: token
+data: {"text": " Ch"}
+
+event: token
+data: {"text": "ois"}
+
+event: token
+data: {"text": "ir"}
+
+event: token
+data: {"text": " le"}
+
+event: token
+data: {"text": " type"}
+
+event: token
+data: {"text": " de"}
+
+event: token
+data: {"text": " ré"}
+
+event: token
+data: {"text": "clamation"}
+
+event: token
+data: {"text": " :"}
+
+event: token
+data: {"text": " Assurance"}
+
+event: token
+data: {"text": " ou"}
+
+event: token
+data: {"text": " Pré"}
+
+event: token
+data: {"text": "voy"}
+
+event: token
+data: {"text": "ance"}
+
+event: token
+data: {"text": ".\n"}
+
+event: token
+data: {"text": "2"}
+
+event: token
+data: {"text": "."}
+
+event: token
+data: {"text": " R"}
+
+event: token
+data: {"text": "ense"}
+
+event: token
+data: {"text": "igner"}
+
+event: token
+data: {"text": " vos"}
+
+event: token
+data: {"text": " informations"}
+
+event: token
+data: {"text": " personnel"}
+
+event: token
+data: {"text": "les"}
+
+event: token
+data: {"text": " et"}
+
+event: token
+data: {"text": " val"}
+
+event: token
+data: {"text": "ider"}
+
+event: token
+data: {"text": " votre"}
+
+event: token
+data: {"text": " email"}
+
+event: token
+data: {"text": " via"}
+
+event: token
+data: {"text": " OTP"}
+
+event: token
+data: {"text": ".\n"}
+
+event: token
+data: {"text": "3"}
+
+event: token
+data: {"text": "."}
+
+event: token
+data: {"text": " Sé"}
+
+event: token
+data: {"text": "lection"}
+
+event: token
+data: {"text": "ner"}
+
+event: token
+data: {"text": " l"}
+
+event: token
+data: {"text": "'"}
+
+event: token
+data: {"text": "entreprise"}
+
+event: token
+data: {"text": ","}
+
+event: token
+data: {"text": " la"}
+
+event: token
+data: {"text": " catégorie"}
+
+event: token
+data: {"text": " et"}
+
+event: token
+data: {"text": " le"}
+
+event: token
+data: {"text": " motif"}
+
+event: token
+data: {"text": " de"}
+
+event: token
+data: {"text": " la"}
+
+event: token
+data: {"text": " ré"}
+
+event: token
+data: {"text": "clamation"}
+
+event: token
+data: {"text": ".\n"}
+
+event: token
+data: {"text": "4"}
+
+event: token
+data: {"text": "."}
+
+event: token
+data: {"text": " R"}
+
+event: token
+data: {"text": "éd"}
+
+event: token
+data: {"text": "iger"}
+
+event: token
+data: {"text": " le"}
+
+event: token
+data: {"text": " message"}
+
+event: token
+data: {"text": " et"}
+
+event: token
+data: {"text": " jo"}
+
+event: token
+data: {"text": "indre"}
+
+event: token
+data: {"text": " les"}
+
+event: token
+data: {"text": " documents"}
+
+event: token
+data: {"text": " ("}
+
+event: token
+data: {"text": "max"}
+
+event: token
+data: {"text": " "}
+
+event: token
+data: {"text": "5"}
+
+event: token
+data: {"text": " Mo"}
+
+event: token
+data: {"text": ").\n"}
+
+event: token
+data: {"text": "5"}
+
+event: token
+data: {"text": "."}
+
+event: token
+data: {"text": " Ré"}
+
+event: token
+data: {"text": "pond"}
+
+event: token
+data: {"text": "re"}
+
+event: token
+data: {"text": " au"}
+
+event: token
+data: {"text": " questionnaire"}
+
+event: token
+data: {"text": " oblig"}
+
+event: token
+data: {"text": "atoire"}
+
+event: token
+data: {"text": ".\n"}
+
+event: token
+data: {"text": "6"}
+
+event: token
+data: {"text": "."}
+
+event: token
+data: {"text": " V"}
+
+event: token
+data: {"text": "ér"}
+
+event: token
+data: {"text": "ifier"}
+
+event: token
+data: {"text": " le"}
+
+event: token
+data: {"text": " ré"}
+
+event: token
+data: {"text": "cap"}
+
+event: token
+data: {"text": "it"}
+
+event: token
+data: {"text": "ul"}
+
+event: token
+data: {"text": "atif"}
+
+event: token
+data: {"text": " et"}
+
+event: token
+data: {"text": " conf"}
+
+event: token
+data: {"text": "ir"}
+
+event: token
+data: {"text": "mer"}
+
+event: token
+data: {"text": " la"}
+
+event: token
+data: {"text": " sou"}
+
+event: token
+data: {"text": "mission"}
+
+event: token
+data: {"text": ".\n\n"}
+
+event: token
+data: {"text": "Une"}
+
+event: token
+data: {"text": " fois"}
+
+event: token
+data: {"text": " valid"}
+
+event: token
+data: {"text": "ée"}
+
+event: token
+data: {"text": ","}
+
+event: token
+data: {"text": " vous"}
+
+event: token
+data: {"text": " rece"}
+
+event: token
+data: {"text": "v"}
+
+event: token
+data: {"text": "rez"}
+
+event: token
+data: {"text": " une"}
+
+event: token
+data: {"text": " référence"}
+
+event: token
+data: {"text": " unique"}
+
+event: token
+data: {"text": " pour"}
+
+event: token
+data: {"text": " suiv"}
+
+event: token
+data: {"text": "re"}
+
+event: token
+data: {"text": " votre"}
+
+event: token
+data: {"text": " demande"}
+
+event: token
+data: {"text": "."}
+
+event: done
+data: {}
+
