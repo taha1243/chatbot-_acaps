@@ -1,7 +1,7 @@
 """
 RAG Engine for Atlas-RAG
-PostgreSQL + pgvector retrieval and OpenAI-compatible generation orchestration.
-Configuration is loaded from backend_api/config/*.json at startup.
+Pipeline : embed question → hybrid search → LLM generation.
+Configuration loaded from backend_api/config/*.json at startup.
 """
 import json
 import logging
@@ -15,7 +15,7 @@ from .config import get_settings, Settings
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Config loader — reads JSON files once at module import
+# Config loader
 # ---------------------------------------------------------------------------
 
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
@@ -27,19 +27,9 @@ def _load_json(filename: str) -> Any:
         return json.load(f)
 
 
-def _load_configs():
-    prompts = _load_json("prompts.json")
-    intent_keywords: Dict[str, List[str]] = _load_json("intent_keywords.json")
-    normalization: Dict[str, str] = {
-        k: v for k, v in _load_json("normalization.json").items()
-        if not k.startswith("_")  # skip comment keys
-    }
-    engine_cfg = _load_json("engine_config.json")
-    return prompts, intent_keywords, normalization, engine_cfg
-
-
 try:
-    _PROMPTS, _INTENT_KEYWORDS, _NORMALIZATION, _ENGINE_CFG = _load_configs()
+    _PROMPTS = _load_json("prompts.json")
+    _ENGINE_CFG = _load_json("engine_config.json")
     logger.info("Engine config loaded from %s", _CONFIG_DIR)
 except Exception as exc:
     logger.critical("Failed to load engine config JSON: %s", exc)
@@ -73,8 +63,8 @@ class RAGResponse:
 
 class RAGEngine:
     """
-    Main RAG engine orchestrating retrieval and generation.
-    All prompts, keywords and routing rules come from config/*.json.
+    RAG pipeline: embed → hybrid search → LLM answer.
+    No keyword routing or section filtering — pure semantic retrieval.
     """
 
     def __init__(
@@ -87,13 +77,6 @@ class RAGEngine:
         self._llm_client = None
         self._vector_store = None
         self._embedder = None
-
-        # Shortcuts to config sections
-        self._prompts = _PROMPTS
-        self._intent_keywords: Dict[str, List[str]] = _INTENT_KEYWORDS
-        self._normalization: Dict[str, str] = _NORMALIZATION
-        self._cfg = _ENGINE_CFG
-
         logger.info("RAGEngine initialized (mock=%s)", use_mock)
 
     # ------------------------------------------------------------------ #
@@ -157,52 +140,34 @@ class RAGEngine:
         return self._embedder
 
     # ------------------------------------------------------------------ #
-    #  Pre-processing                                                       #
+    #  Helpers                                                              #
     # ------------------------------------------------------------------ #
 
     def _is_greeting(self, text: str) -> bool:
         clean = text.strip().lower()
-        return any(kw in clean for kw in self._cfg["greeting_keywords"])
-
-    def _normalize_query(self, question: str) -> str:
-        """
-        Append French equivalents for Arabic tokens so the embedding
-        captures intent when the user writes in Arabic.
-        """
-        q_lower = question.lower()
-        extras = [fr for ar, fr in self._normalization.items() if ar in q_lower]
-        if extras:
-            normalized = f"{question} {' '.join(extras)}"
-            logger.info("Query normalized: '%s' → '%s'", question[:80], normalized[:120])
-            return normalized
-        return question
-
-    def _classify_intent(self, question: str) -> Optional[str]:
-        """Return intent name or None, using keyword matching."""
-        q_lower = question.lower()
-        for intent, keywords in self._intent_keywords.items():
-            if any(kw in q_lower for kw in keywords):
-                logger.info("Intent classified: %s", intent)
-                return intent
-        return None
+        # Word-boundary match to avoid "hi" matching inside "fichiers", etc.
+        return any(
+            re.search(r'(?<![a-zàâäéèêëîïôùûüç])' + re.escape(kw) + r'(?![a-zàâäéèêëîïôùûüç])', clean)
+            for kw in _ENGINE_CFG["greeting_keywords"]
+        )
 
     def _sanitize_response(self, text: str) -> str:
         """Strip Cyrillic characters that the 3b model occasionally injects."""
         return re.sub(r'[Ѐ-ӿ]+', '', text).strip()
 
-    def _post_validate(self, answer: str, confidence: float) -> bool:
-        """Return False if the answer looks hallucinated or empty."""
-        if len(answer.strip()) < self._cfg["min_answer_length"]:
+    def _post_validate(self, answer: str) -> bool:
+        """Return False if the answer is empty or contains hallucination markers."""
+        if len(answer.strip()) < _ENGINE_CFG["min_answer_length"]:
             return False
         answer_lower = answer.lower()
-        for indicator in self._cfg["hallucination_indicators"]:
+        for indicator in _ENGINE_CFG["hallucination_indicators"]:
             if indicator in answer_lower:
                 logger.warning("Hallucination indicator detected: '%s'", indicator)
                 return False
         return True
 
     # ------------------------------------------------------------------ #
-    #  Main query pipeline                                                  #
+    #  Main RAG pipeline                                                    #
     # ------------------------------------------------------------------ #
 
     def query(self, question: str) -> RAGResponse:
@@ -210,56 +175,42 @@ class RAGEngine:
 
         # 0. Greeting fast-path
         if self._is_greeting(question):
-            logger.info("Detected greeting, returning conversational response")
-            prompt = self._prompts["greeting_prompt"].format(question=question)
+            logger.info("Detected greeting")
+            prompt = _PROMPTS["greeting_prompt"].format(question=question)
             return RAGResponse(
                 answer=self._generate_conversational(prompt),
                 citations=[],
                 confidence=1.0,
                 context_used="",
-                metadata={"greeting": True, "model": "conversational-llm"},
+                metadata={"greeting": True},
             )
 
-        # 1. Normalize Arabic/unaccented French tokens
-        normalized_question = self._normalize_query(question)
+        # 1. Embed the raw question
+        query_embedding = self.embedder.embed_query(question)
 
-        # 2. Intent classification
-        intent = self._classify_intent(normalized_question)
-        query_text_for_search = normalized_question
-        if intent:
-            hint = self._cfg["section_hints"].get(intent, "")
-            if hint:
-                query_text_for_search = f"{normalized_question} {hint}"
-                logger.info("Search query augmented with hint: '%s'", hint)
-
-        # 3. Embed & retrieve
-        section_filter = self._cfg["intent_section_filter"].get(intent) if intent else None
-        retrieval_threshold = 0.0 if section_filter else self.settings.similarity_threshold
-        query_embedding = self.embedder.embed_query(normalized_question)
+        # 2. Hybrid search across the full guide
         search_results = self.vector_store.hybrid_search(
             query_embedding=query_embedding,
-            query_text=query_text_for_search,
+            query_text=question,
             top_k=self.settings.top_k_results,
-            score_threshold=retrieval_threshold,
-            keyword_boost=self._cfg["keyword_boost"],
-            file_name=self._cfg["portal_file"],
-            header_path_prefix=section_filter,
+            score_threshold=self.settings.similarity_threshold,
+            keyword_boost=_ENGINE_CFG["keyword_boost"],
+            file_name=_ENGINE_CFG["portal_file"],
         )
 
-        # No results → intelligent redirect
+        # No results → redirect
         if not search_results:
-            logger.info("No relevant chunks found — redirecting via general_prompt")
-            prompt = self._prompts["general_prompt"].format(question=question)
-            answer = self._generate_conversational(prompt)
+            logger.info("No relevant chunks found — redirecting")
+            prompt = _PROMPTS["general_prompt"].format(question=question)
             return RAGResponse(
-                answer=answer,
+                answer=self._generate_conversational(prompt),
                 citations=[],
                 confidence=0.0,
                 context_used="",
-                metadata={"retrieval_count": 0, "source": "general_redirect", "intent": intent},
+                metadata={"retrieval_count": 0, "source": "general_redirect"},
             )
 
-        # 4. Build context
+        # 3. Build context
         context_parts = []
         citations: List[Citation] = []
         for result in search_results:
@@ -276,18 +227,18 @@ class RAGEngine:
         context = "\n\n---\n\n".join(context_parts)
         avg_score = sum(r.score for r in search_results) / len(search_results)
 
-        # 5. Generate answer
-        prompt = self._prompts["system_prompt"].format(context=context, question=question)
+        # 4. LLM generates answer from context
+        prompt = _PROMPTS["system_prompt"].format(context=context, question=question)
         answer = self._generate(prompt, context=context)
 
-        # 6. Post-validation: fall back to general_prompt if response looks bad
-        if not self._post_validate(answer, avg_score):
+        # 5. Post-validation
+        if not self._post_validate(answer):
             logger.warning("Post-validation failed — falling back to general_prompt")
-            fallback_prompt = self._prompts["general_prompt"].format(question=question)
+            fallback_prompt = _PROMPTS["general_prompt"].format(question=question)
             answer = self._generate_conversational(fallback_prompt)
             citations = []
 
-        logger.info("Generated answer with %d citations (avg_score=%.3f)", len(citations), avg_score)
+        logger.info("Answer generated with %d citations (avg_score=%.3f)", len(citations), avg_score)
 
         return RAGResponse(
             answer=answer,
@@ -298,8 +249,6 @@ class RAGEngine:
                 "retrieval_count": len(search_results),
                 "top_score": search_results[0].score,
                 "model": self.settings.vllm_model,
-                "intent": intent,
-                "section_filter_active": bool(section_filter),
             },
         )
 
@@ -314,7 +263,7 @@ class RAGEngine:
             response = self.llm_client.chat.completions.create(
                 model=self.settings.vllm_model,
                 messages=[
-                    {"role": "system", "content": self._prompts["system_message_rag"]},
+                    {"role": "system", "content": _PROMPTS["system_message_rag"]},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=self.settings.temperature,
@@ -325,16 +274,16 @@ class RAGEngine:
             logger.error("LLM generation failed: %s", e)
             if self.settings.llm_fallback_enabled and context:
                 return self._generate_fallback_response(context)
-            return self._prompts["fallback_unavailable"]
+            return _PROMPTS["fallback_unavailable"]
 
     def _generate_conversational(self, prompt: str) -> str:
         if self.use_mock:
-            return self._prompts["conversational_fallback"]
+            return _PROMPTS["conversational_fallback"]
         try:
             response = self.llm_client.chat.completions.create(
                 model=self.settings.vllm_model,
                 messages=[
-                    {"role": "system", "content": self._prompts["system_message_conversational"]},
+                    {"role": "system", "content": _PROMPTS["system_message_conversational"]},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.7,
@@ -343,7 +292,7 @@ class RAGEngine:
             return self._sanitize_response(response.choices[0].message.content)
         except Exception as e:
             logger.error("Error generating conversational response: %s", e)
-            return self._prompts["greeting_fallback"]
+            return _PROMPTS["greeting_fallback"]
 
     def _generate_fallback_response(self, context: str) -> str:
         if "[Source:" in context:
@@ -352,9 +301,9 @@ class RAGEngine:
         else:
             first_source = context[:500]
         return (
-            self._prompts["fallback_context_header"]
+            _PROMPTS["fallback_context_header"]
             + first_source
-            + self._prompts["fallback_context_footer"]
+            + _PROMPTS["fallback_context_footer"]
         )
 
     def health_check(self) -> Dict[str, Any]:

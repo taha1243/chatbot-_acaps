@@ -1,23 +1,9 @@
 {
   "portal_file": "guide_portal_acaps.md",
 
-  "section_hints": {
-    "submit": "Soumettre une réclamation",
-    "track": "Suivre une réclamation",
-    "close": "Clôturer réouvrir réclamation",
-    "satisfaction": "Questionnaire satisfaction"
-  },
-
-  "intent_section_filter": {
-    "submit": "Section 1",
-    "track": "Section 2",
-    "close": "Section 3",
-    "satisfaction": "Section 4"
-  },
-
   "hallucination_indicators": [
     "je pense que", "je crois que", "probablement", "il est possible que",
-    "généralement", "je suppose", "à ma connaissance",
+    "généralement", "je suppose", "à ma connaissance","il semble que", "je dirais que",
     "je ne suis pas certain", "il me semble", "d'habitude"
   ],
 
