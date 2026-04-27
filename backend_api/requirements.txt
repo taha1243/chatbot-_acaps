@@ -7,24 +7,26 @@ python-multipart==0.0.9
 pydantic==2.6.1
 pydantic-settings==2.2.1
 
-# OpenAI Client (for vLLM)
-openai==1.12.0
-
 # PostgreSQL + pgvector
 psycopg[binary]==3.2.1
 
-# Embeddings — transformers directly (explicit cache_dir, no SentenceTransformer wrapper)
-transformers==4.40.2
-tokenizers>=0.19.0
+# Embeddings — sentence-transformers (multilingual-e5-base)
+transformers>=4.51.0
+tokenizers>=0.21.0
+sentence-transformers>=2.6.0
+
+# LLM — Ollama via OpenAI-compatible API
+openai>=1.0.0
 
 # Markdown parsing
 python-frontmatter==1.1.0
 markdown==3.6
 beautifulsoup4==4.12.3
 
+# Language detection
+langdetect==1.0.9
 
 # Utilities
 python-slugify==8.0.4
 python-dotenv==1.0.1
 httpx==0.26.0
-

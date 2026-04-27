@@ -57,7 +57,7 @@ const SUGGESTIONS = [
   'Comment déposer une réclamation ?',
   'Quels documents fournir ?',
   'Délai de traitement ?',
-  'كيفاش نتبع ملفي ؟',
+  
 ]
 
 interface StreamHandlers {

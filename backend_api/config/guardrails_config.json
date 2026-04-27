@@ -1,0 +1,56 @@
+{
+  "jailbreak_patterns": [
+    "ignore.*(?:previous|your).*instructions",
+    "forget.*(?:previous|your).*instructions",
+    "pretend.*(?:you are|to be)",
+    "act as if",
+    "you are now",
+    "new persona",
+    "bypass.*(?:filters|restrictions)",
+    "DAN.*mode",
+    "developer.*mode",
+    "jailbreak",
+    "override.*instructions"
+  ],
+  "off_topic_patterns": [
+    "(?:what's|what is|quelle? est).*(?:weather|météo|temps qu.il fait|temperature|température|درجة الحرارة)",
+    "(?:tell|write|écris|raconte).{0,20}(?:joke|blague|story|histoire|poem|poème|anecdote|نكتة)",
+    "(?:who won|score of|résultat du).*(?:game|match|jeu)",
+    "(?:latest|recent|dernières).*(?:news|actualités|nouvelles)",
+    "(?:stock|crypto|bitcoin|action).*(?:price|cours|prix)",
+    "(?:recipe|recette|cook|cuisin)",
+    "(?:comment|how to).{0,20}(?:acheter|buy|purchase).{0,30}(?:voiture|car|maison|house|téléphone|phone|ordinateur|computer)",
+    "(?:كيف|هل يمكن).{0,20}(?:اشتري|أشتري|أشتر|شراء).{0,30}(?:سيارة|منزل|هاتف|جهاز)",
+    "درجة الحرارة|الطقس في|météo.{0,20}(?:rabat|casablanca|maroc|fes)",
+    "raconte.moi.une.blague"
+  ],
+  "toxic_patterns": [
+    "(?:you are|you're|tu es|t'es).*(?:stupid|idiot|dumb|stupide|nul|imbécile)",
+    "(?:this is|it's|c'est).*(?:garbage|trash|useless|nul|inutile|déchets)",
+    "\\b(?:hate|kill|die|tuer|mourir|haine)\\b"
+  ],
+  "hallucination_indicators": [
+    "I think",
+    "I believe",
+    "probably",
+    "might be",
+    "could be",
+    "as far as I know",
+    "in my opinion",
+    "generally speaking"
+  ],
+  "blocked_responses": {
+    "jailbreak_fr": "Je peux uniquement vous aider avec les questions relatives au portail et aux documents ACAPS.",
+    "jailbreak_ar": "يمكنني فقط مساعدتك في الأسئلة المتعلقة ببوابة ACAPS ووثائقها.",
+    "toxicity_fr": "Merci de reformuler votre question de manière respectueuse.",
+    "toxicity_ar": "يرجى إعادة صياغة سؤالك بأسلوب محترم.",
+    "off_topic_fr": "Je suis conçu pour répondre aux questions sur le portail ACAPS uniquement.",
+    "off_topic_ar": "أنا مصمم للإجابة على أسئلة بوابة ACAPS فقط.",
+    "low_confidence_fr": "Je ne trouve pas cette information dans les documents disponibles.",
+    "low_confidence_ar": "لم أجد هذه المعلومة في الوثائق المتاحة.",
+    "hallucination_fr": "Je ne peux pas fournir une réponse vérifiée à partir des documents disponibles.",
+    "hallucination_ar": "لا أستطيع تقديم إجابة موثقة بناءً على الوثائق المتاحة.",
+    "pii_detected_fr": "Je ne peux pas traiter des demandes contenant des informations personnelles.",
+    "pii_detected_ar": "لا أستطيع معالجة طلبات تحتوي على معلومات شخصية."
+  }
+}

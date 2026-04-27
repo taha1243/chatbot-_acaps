@@ -42,6 +42,9 @@ class EmbeddingGenerator:
     Explicit cache_dir so the model is always stored in the persisted Docker volume.
     """
 
+    # Models that require asymmetric "query: " / "passage: " prefixes
+    _E5_PREFIX_MODELS = ("intfloat/multilingual-e5", "intfloat/e5-", "microsoft/e5-")
+
     def __init__(
         self,
         model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
@@ -55,6 +58,7 @@ class EmbeddingGenerator:
         self._device = device
         self._tokenizer = None
         self._model = None
+        self._use_e5_prefix = any(model_name.startswith(p) for p in self._E5_PREFIX_MODELS)
 
         logger.info("Initializing EmbeddingGenerator — model: %s  cache: %s", model_name, self.cache_dir)
 
@@ -147,6 +151,9 @@ class EmbeddingGenerator:
         logger.info("Embedding %d texts with batch_size=%d", len(texts), batch_size)
         results: List[EmbeddingResult] = []
 
+        if self._use_e5_prefix:
+            texts = [f"passage: {t}" for t in texts]
+
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
             vecs = self._encode_batch(batch)
@@ -163,7 +170,9 @@ class EmbeddingGenerator:
         return results
 
     def embed_query(self, query: str) -> List[float]:
-        """Embed a query for semantic search. Strips BGE instruction prefix if present."""
+        """Embed a query for semantic search, applying model-specific prefixes."""
+        if self._use_e5_prefix:
+            query = f"query: {query}"
         return self.embed_text(query).embedding
 
 

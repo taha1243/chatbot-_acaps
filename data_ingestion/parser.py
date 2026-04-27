@@ -121,10 +121,16 @@ class MarkdownParser:
                 # No URL available - leave empty
                 url_slug = ""
             
+            # Prepend section path so the embedding captures both the section title
+            # and the content — pure semantic search finds the right section without
+            # any keyword routing.
+            section_label = header_path or title
+            text_with_path = f"[{section_label}]\n{text.strip()}"
+
             chunk = DocumentChunk(
-                text=text.strip(),
+                text=text_with_path,
                 file_name=file_name,
-                header_path=header_path or title,
+                header_path=section_label,
                 url_slug=url_slug,
                 base_url=base_url,
                 last_updated=last_updated,

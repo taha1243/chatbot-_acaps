@@ -45,35 +45,24 @@ services:
       - atlas-network
 
   # ===========================================
-  # 3. LLM Local - Ollama (qwen2.5:3b)
-  #    - Télécharge le modèle automatiquement au 1er lancement
-  #    - Stocke le modèle dans un volume persistant (pas re-téléchargé)
+  # 3. Ollama - Local LLM Server
   # ===========================================
   ollama:
-    build:
-      context: ./ollama
-      dockerfile: Dockerfile
+    image: ollama/ollama:latest
     container_name: atlas-ollama
     restart: unless-stopped
     ports:
       - "11434:11434"
     environment:
-      OLLAMA_MODEL: ${VLLM_MODEL:-qwen2.5:3b}
-      OLLAMA_KEEP_ALIVE: "-1"
-      OLLAMA_NUM_PARALLEL: "1"
-      OLLAMA_MAX_LOADED_MODELS: "1"
-      OLLAMA_NUM_THREAD: ${OLLAMA_NUM_THREAD:-8}
+      OLLAMA_DEBUG: "false"
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:
-      # Use the runtime env var so the check tracks whatever VLLM_MODEL is set to.
-      # $$ defers expansion to the container shell (docker-compose would otherwise
-      # try to substitute $OLLAMA_MODEL at parse time).
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags | grep -q \"$$OLLAMA_MODEL\""]
-      interval: 30s
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
       timeout: 10s
-      retries: 30
-      start_period: 600s
+      retries: 5
+      start_period: 30s
     networks:
       - atlas-network
 
@@ -89,25 +78,24 @@ services:
     ports:
       - "8080:8080"
     environment:
-      VLLM_URL: "http://ollama:11434/v1"
-      VLLM_API_KEY: "ollama"
-      VLLM_MODEL: ${VLLM_MODEL:-qwen2.5:3b}
-      LLM_PROVIDER: "ollama"
-      LLM_FALLBACK_ENABLED: "true"
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-ollama}
       DATABASE_URL: ${DATABASE_URL:-postgresql://atlas:atlas@postgres:5432/atlas_rag}
       VECTOR_TABLE: ${VECTOR_TABLE:-atlas_knowledge}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
-      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-base}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-768}
       SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.25}
-      TOP_K_RESULTS: ${TOP_K_RESULTS:-3}
-      TEMPERATURE: ${TEMPERATURE:-0.0}
-      MAX_TOKENS: ${MAX_TOKENS:-500}
+      TOP_K_RESULTS: ${TOP_K_RESULTS:-8}
+      TEMPERATURE: ${TEMPERATURE:-0.7}
+      MAX_TOKENS: ${MAX_TOKENS:-1024}
       ENABLE_GUARDRAILS: ${ENABLE_GUARDRAILS:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       HF_HOME: /app/.cache/huggingface
     volumes:
       - ./data_ingestion:/app/data_ingestion:ro
+      - ./backend_api/config:/app/config:ro
       - hf_cache:/app/.cache/huggingface
     depends_on:
       postgres:
@@ -162,7 +150,7 @@ volumes:
     name: atlas-postgres-data
   pgadmin_data:
     name: atlas-pgadmin-data
-  ollama_data:
-    name: atlas-ollama-data
   hf_cache:
     name: atlas-hf-cache
+  ollama_data:
+    name: atlas-ollama-data

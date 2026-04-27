@@ -51,7 +51,7 @@ class IngestionPipeline:
         self.use_mock = use_mock
         
         # Initialize components
-        self.parser = MarkdownParser()
+        self.parser = MarkdownParser(max_split_level=3)
         
         if use_mock:
             from .embedder import MockEmbeddingGenerator
