@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(MSYS_NO_PATHCONV=1 docker exec atlas-api grep -nE \"PORTAL_FILE_AR|SECTION_HINTS_AR|CRITICAL LANGUAGE RULE|lang_directive\" /app/app/engine.py)"
-    ]
-  }
-}

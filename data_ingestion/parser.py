@@ -49,19 +49,15 @@ class MarkdownParser:
     
     # Regex pattern for ATX headers
     HEADER_PATTERN = re.compile(r'^(#{1,6})\s+(.+)$', re.MULTILINE)
-
-    def __init__(self, default_base_url: str = "", max_split_level: int = 2):
+    
+    def __init__(self, default_base_url: str = ""):
         """
         Initialize the parser.
-
+        
         Args:
             default_base_url: Default base URL if not specified in frontmatter
-            max_split_level: Only headers with level <= this value create a new chunk.
-                Deeper headers are kept as in-chunk text so multi-step sections stay together.
-                Default 1 → one chunk per top-level `#` section.
         """
         self.default_base_url = default_base_url
-        self.max_split_level = max_split_level
     
     def parse_file(self, file_path: str) -> List[DocumentChunk]:
         """
@@ -154,27 +150,22 @@ class MarkdownParser:
         
         for line in lines:
             match = self.HEADER_PATTERN.match(line)
-
+            
             if match:
-                level = len(match.group(1))
-                title = match.group(2).strip()
-
-                # Deeper headers than the split threshold stay as chunk body text
-                # so procedural sub-sections (e.g. "## Étape 1") don't fragment the chunk.
-                if level > self.max_split_level:
-                    current_text.append(line)
-                    continue
-
                 # Save previous section if exists
                 if current_text:
                     header_path = self._build_header_path(header_stack)
                     chunks.append((header_path, '\n'.join(current_text)))
                     current_text = []
-
+                
+                # Process new header
+                level = len(match.group(1))
+                title = match.group(2).strip()
+                
                 # Pop headers of same or lower level
                 while header_stack and header_stack[-1][0] >= level:
                     header_stack.pop()
-
+                
                 header_stack.append((level, title))
             else:
                 current_text.append(line)
@@ -239,34 +230,32 @@ class MarkdownParser:
         return all_chunks
 
 
-def parse_markdown(file_path: str, base_url: str = "", max_split_level: int = 2) -> List[DocumentChunk]:
+def parse_markdown(file_path: str, base_url: str = "") -> List[DocumentChunk]:
     """
     Convenience function to parse a single Markdown file.
-
+    
     Args:
         file_path: Path to Markdown file
         base_url: Default base URL
-        max_split_level: Header level threshold for chunk splitting (see MarkdownParser)
-
+        
     Returns:
         List of DocumentChunk objects
     """
-    parser = MarkdownParser(default_base_url=base_url, max_split_level=max_split_level)
+    parser = MarkdownParser(default_base_url=base_url)
     return parser.parse_file(file_path)
 
 
-def parse_directory(directory: str, base_url: str = "", max_split_level: int = 2) -> List[DocumentChunk]:
+def parse_directory(directory: str, base_url: str = "") -> List[DocumentChunk]:
     """
     Convenience function to parse a directory of Markdown files.
-
+    
     Args:
         directory: Path to directory
         base_url: Default base URL
-        max_split_level: Header level threshold for chunk splitting (see MarkdownParser)
-
+        
     Returns:
         List of DocumentChunk objects
     """
-    parser = MarkdownParser(default_base_url=base_url, max_split_level=max_split_level)
+    parser = MarkdownParser(default_base_url=base_url)
     return parser.parse_directory(directory)
 

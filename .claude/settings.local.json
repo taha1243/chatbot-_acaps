@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(curl -N -s -X POST http://localhost:11434/v1/chat/completions -H \"Content-Type: application/json\" -H \"Authorization: Bearer ollama\" -d '{\"model\":\"qwen2.5:3b\",\"messages\":[{\"role\":\"user\",\"content\":\"Dis bonjour en 5 mots.\"}],\"stream\":true,\"max_tokens\":30}' --max-time 60)"
-    ]
-  }
-}

@@ -60,62 +60,14 @@ const SUGGESTIONS = [
   'كيفاش نتبع ملفي ؟',
 ]
 
-interface StreamHandlers {
-  onStart?: (conversationId: string) => void
-  onMeta?: (meta: { citations: Citation[]; confidence: number; metadata?: Record<string, unknown> & { replace_answer?: boolean } }) => void
-  onToken: (token: string, opts?: { replace?: boolean }) => void
-  onDone?: () => void
-  onError?: (message: string) => void
-}
-
-async function streamQuery(
-  question: string,
-  conversationId: string | undefined,
-  handlers: StreamHandlers,
-  signal?: AbortSignal,
-) {
-  const res = await fetch(`${API_BASE}/chat/stream`, {
+async function sendQuery(question: string, conversationId?: string) {
+  const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question, conversation_id: conversationId }),
-    signal,
   })
-  if (!res.ok || !res.body) throw new Error('network_error')
-
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-
-  const dispatch = (event: string, dataRaw: string) => {
-    let data: any = {}
-    try { data = dataRaw ? JSON.parse(dataRaw) : {} } catch { return }
-    switch (event) {
-      case 'start': handlers.onStart?.(data.conversation_id); break
-      case 'meta':  handlers.onMeta?.(data); break
-      case 'token': handlers.onToken(data.text ?? '', { replace: !!data.replace }); break
-      case 'done':  handlers.onDone?.(); break
-      case 'error': handlers.onError?.(data.message ?? 'error'); break
-    }
-  }
-
-  while (true) {
-    const { value, done } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-
-    let sep: number
-    while ((sep = buffer.indexOf('\n\n')) !== -1) {
-      const frame = buffer.slice(0, sep)
-      buffer = buffer.slice(sep + 2)
-      let event = 'message'
-      const dataLines: string[] = []
-      for (const line of frame.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim()
-        else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''))
-      }
-      dispatch(event, dataLines.join('\n'))
-    }
-  }
+  if (!res.ok) throw new Error('network_error')
+  return res.json()
 }
 
 /* ─── TypingIndicator ────────────────────────────────────────────── */
@@ -475,40 +427,21 @@ export default function App() {
     setIsLoading(true)
 
     try {
-      await streamQuery(question, conversationId, {
-        onStart: (cid) => setConvId(cid),
-        onMeta: (meta) => {
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === loadingMsg.id
-                ? {
-                    ...m,
-                    citations:  meta.citations ?? m.citations ?? [],
-                    confidence: meta.confidence ?? m.confidence ?? 0,
-                    content:    meta.metadata?.replace_answer ? '' : m.content,
-                  }
-                : m
-            )
-          )
-        },
-        onToken: (token, opts) => {
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === loadingMsg.id
-                ? {
-                    ...m,
-                    isLoading: false,
-                    content: opts?.replace ? token : (m.content + token),
-                  }
-                : m
-            )
-          )
-        },
-        onError: () => {
-          setError('Une erreur est survenue. Veuillez réessayer.')
-          setMessages(prev => prev.filter(m => m.id !== loadingMsg.id))
-        },
-      })
+      const res = await sendQuery(question, conversationId)
+      setConvId(res.conversation_id)
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === loadingMsg.id
+            ? {
+                ...loadingMsg,
+                content:    res.answer,
+                citations:  res.citations ?? [],
+                confidence: res.confidence ?? 0,
+                isLoading:  false,
+              }
+            : m
+        )
+      )
     } catch {
       setError('Une erreur est survenue. Veuillez réessayer.')
       setMessages(prev => prev.filter(m => m.id !== loadingMsg.id))
