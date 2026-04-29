@@ -1,0 +1,11 @@
+{
+  "answer": "Je suis spécialisé dans l'utilisation du portail ACAPS et peux vous aider avec vos demandes concernant les réclamations ici. \n\nPour suivre votre réclamation, nous aurons besoin de quelques détails :\n1. Section 1: Aide à soumettre une réclamation - Si cette information n'est pas disponible dans le système et que vous souhaitez soumettre une nouvelle demande.\n2. Section 2: Aider à suivre une réclamation - C'est ce qui vous intéresse vraiment, pour suivre l'état de votre réclamation actuelle.\n\nPour suivre votre réclamation, veuillez communiquer moi avec le numéro d'identification ou le nom de la réclamation si c'est disponible. \n\nSection 3: N'hésitez pas à me demander comment clôturer ou réouvrir une réclamation en cas de besoin.\nSection 4: Pour des informations sur le questionnaire de satisfaction, n'hésitez pas à poser votre question.\n\nSi cette information ne correspond pas à ce que vous cherchez, pouvez-vous reformuler votre demande pour plus d'aide ?",
+  "citations": [],
+  "confidence": 0.0,
+  "conversation_id": "ec0d46a3-0875-430c-bd60-f8d615ae2bef",
+  "metadata": {
+    "retrieval_count": 0,
+    "source": "general_redirect",
+    "intent": "track"
+  }
+}

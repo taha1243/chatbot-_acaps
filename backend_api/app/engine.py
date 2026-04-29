@@ -246,10 +246,58 @@ class RAGEngine:
 
     # ── Post-validation ───────────────────────────────────────────────────────
 
-    def _post_validate(self, answer: str, confidence: float) -> bool:
-        if confidence >= _ENGINE_CFG["high_confidence_skip_hallucination"]:
-            return len(answer.strip()) > 0
-        return len(answer.strip()) >= _ENGINE_CFG["min_answer_length"]
+    _GROUNDING_TOKEN_RE = re.compile(r"[a-zàâäéèêëîïôùûüç؀-ۿ]{4,}")
+    _GROUNDING_STOPWORDS = frozenset({
+        "alors", "ainsi", "avec", "aussi", "avant", "apres", "après",
+        "cela", "cette", "celui", "celle", "comme", "comment", "dans",
+        "donc", "elle", "elles", "etait", "était", "etre", "être",
+        "faut", "leur", "leurs", "mais", "meme", "même", "moins",
+        "nous", "pour", "plus", "puis", "quand", "quelle", "quelles",
+        "quelqu", "quelque", "quelques", "quels", "quoi", "sans",
+        "sont", "sous", "tres", "très", "tout", "tous", "toute",
+        "toutes", "vous", "votre", "voici", "voila", "voilà",
+        "هذا", "هذه", "ذلك", "تلك", "الذي", "التي", "الذين",
+        "كان", "كانت", "يكون", "تكون", "مثل", "حيث", "حول",
+        "بعد", "قبل", "عند", "لكن", "غير", "بين", "أيضا", "أيضًا",
+    })
+
+    def _grounding_tokens(self, text: str) -> set:
+        return {
+            tok for tok in self._GROUNDING_TOKEN_RE.findall(text.lower())
+            if tok not in self._GROUNDING_STOPWORDS
+        }
+
+    def _is_answer_grounded(self, answer: str, context: str) -> bool:
+        """
+        Verify the answer's content words actually appear in the retrieved
+        context. Catches cases where the LLM falls back to its world
+        knowledge (e.g., "La capitale du Maroc est Rabat") despite a
+        system prompt restricting it to the guide.
+        """
+        if not context.strip():
+            return False
+        answer_tokens = self._grounding_tokens(answer)
+        if len(answer_tokens) < _ENGINE_CFG["answer_grounding_min_tokens"]:
+            return True
+        context_tokens = self._grounding_tokens(context)
+        overlap = answer_tokens & context_tokens
+        ratio = len(overlap) / len(answer_tokens)
+        if ratio < _ENGINE_CFG["answer_grounding_min_ratio"]:
+            logger.warning(
+                "Answer not grounded — overlap %.2f (%d/%d tokens). Missing: %s",
+                ratio, len(overlap), len(answer_tokens),
+                sorted(answer_tokens - context_tokens)[:10],
+            )
+            return False
+        return True
+
+    def _post_validate(self, answer: str, confidence: float, context: str) -> bool:
+        stripped = answer.strip()
+        if not stripped:
+            return False
+        if len(stripped) < _ENGINE_CFG["min_answer_length"]:
+            return False
+        return self._is_answer_grounded(stripped, context)
 
     # ── Context & citations ───────────────────────────────────────────────────
 
@@ -354,7 +402,7 @@ class RAGEngine:
 
         answer = self._generate(lang=lang, context=context, question=question)
 
-        if not self._post_validate(answer, avg_score):
+        if not self._post_validate(answer, avg_score, context):
             logger.warning("Post-validation failed")
             return RAGResponse(
                 answer=self._document_only_response(question),
@@ -424,7 +472,7 @@ class RAGEngine:
             return
 
         full_answer = "".join(collected)
-        if not self._post_validate(full_answer, avg_score):
+        if not self._post_validate(full_answer, avg_score, context):
             yield "token", {"text": self._document_only_response(question), "replace": True}
 
         yield "done", {}

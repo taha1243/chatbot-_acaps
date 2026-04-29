@@ -2,9 +2,11 @@
   "portal_file_fr": "guide_portal_acaps 3.md",
   "portal_file_ar": "guide_portal_acaps_ar.md",
   "max_chunk_chars_for_prompt": 500,
-  "min_confidence_threshold": 0.30,
+  "min_confidence_threshold": 0.40,
   "high_confidence_skip_hallucination": 0.50,
   "min_answer_length": 5,
+  "answer_grounding_min_ratio": 0.5,
+  "answer_grounding_min_tokens": 3,
   "greeting_keywords": [
     "bonjour", "salut", "hello", "hi", "coucou", "bonsoir", "bonne journée",
     "hey", "good morning", "good afternoon", "good evening",

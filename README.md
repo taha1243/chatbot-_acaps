@@ -15,13 +15,15 @@
 1. [Présentation](#présentation)
 2. [Architecture](#architecture)
 3. [Démarrage rapide](#démarrage-rapide)
-4. [Services Docker](#services-docker)
-5. [Variables d'environnement](#variables-denvironnement)
-6. [Pipeline d'ingestion](#pipeline-dingestion)
-7. [API REST](#api-rest)
-8. [Structure du projet](#structure-du-projet)
-9. [Tests](#tests)
-10. [Dépannage](#dépannage)
+4. [Intégration dans une application existante](#intégration-dans-une-application-existante)
+5. [Référence API](#référence-api)
+6. [Variables d'environnement](#variables-denvironnement)
+7. [Configuration métier (JSON)](#configuration-métier-json)
+8. [Pipeline d'ingestion](#pipeline-dingestion)
+9. [Services Docker](#services-docker)
+10. [Structure du projet](#structure-du-projet)
+11. [Tests](#tests)
+12. [Dépannage](#dépannage)
 
 ---
 
@@ -38,14 +40,14 @@ Le chatbot guide les utilisateurs du portail ACAPS sur les opérations suivantes
 
 ### Fonctionnalités clés
 
-- **RAG ciblé** : recherche uniquement dans `guide_portal_acaps.md`
-- **Réponses structurées** : instructions étape par étape avec sources citées
-- **LLM local** : Qwen2.5:3b via Ollama — aucune donnée ne quitte le serveur
-- **Multilingue** : français / arabe standard / darija marocaine (arabe + translittération latine)
-- **Normalisation darija** : mapping automatique darija → français pour améliorer le retrieval
-- **Classification d'intention** : détection submit / track / close / satisfaction pour boost contextuel
-- **Cache modèle persistant** : volume Docker `atlas-hf-cache`, téléchargement unique (~34 MB)
-- **Interface moderne** : design palette officielle ACAPS
+- **RAG strictement ancré** : recherche dans le guide officiel uniquement (FR + AR)
+- **Streaming SSE** : réponses token-par-token via `/chat/stream`
+- **LLM local** : Qwen2.5 via Ollama — aucune donnée ne quitte le serveur
+- **Multilingue** : français / arabe standard, deux guides séparés (`guide_portal_acaps 3.md` / `guide_portal_acaps_ar.md`)
+- **Guardrails** : input (jailbreak, off-topic, toxicité) et output (ancrage dans le contexte)
+- **Vérification d'ancrage** : la réponse doit partager au moins 50 % de ses mots-clés avec le contexte récupéré, sinon elle est remplacée par un message « hors guide »
+- **Cache modèle persistant** : volumes Docker `atlas-hf-cache` et `atlas-ollama-data`
+- **Interface** : React + Vite + Tailwind, palette officielle ACAPS
 
 ---
 
@@ -56,27 +58,29 @@ Le chatbot guide les utilisateurs du portail ACAPS sur les opérations suivantes
 │              Navigateur  :3000                       │
 │              React + Nginx                           │
 └────────────────────┬────────────────────────────────┘
-                     │  /api/*  (proxy)
+                     │  /api/*  (proxy Nginx)
                      ▼
 ┌─────────────────────────────────────────────────────┐
 │              Backend API  :8080                      │
 │              FastAPI + Uvicorn                       │
 │                                                      │
-│  [Guardrails] → [Greeting] → [Normalize+Intent]     │
-│                                  ↓                   │
-│                   [Embedding MiniLM-L12 384-dim]     │
-│                                  ↓                   │
-│                        [VectorStore pgvector]        │
-│                          (guide_portal_acaps.md)     │
-│                                  ↓                   │
-│                        [LLMClient → Ollama]          │
+│  [InputGuardrails] → [Greeting?] → [Lang detect]    │
+│                                       ↓              │
+│                    [Embedding multilingual-e5-base]  │
+│                       768-dim                        │
+│                                       ↓              │
+│                    [VectorStore pgvector hybrid]     │
+│                       (atlas_knowledge)              │
+│                                       ↓              │
+│                    [Ollama LLM]  →  [Output guard]   │
+│                                     [Grounding chk]  │
 └──────────────┬──────────────────────┬───────────────┘
                │                      │
                ▼                      ▼
 ┌─────────────────────┐  ┌──────────────────────────┐
 │  PostgreSQL :5432   │  │  Ollama  :11434           │
 │  + pgvector         │  │  qwen2.5:3b (1.9 GB)      │
-│  atlas_knowledge    │  │  KEEP_ALIVE=-1            │
+│  atlas_knowledge    │  │                            │
 └─────────────────────┘  └──────────────────────────┘
 ```
 
@@ -86,28 +90,31 @@ Le chatbot guide les utilisateurs du portail ACAPS sur les opérations suivantes
 Question utilisateur
       │
       ▼
-[InputGuardrails]  ──→ BLOQUÉ si jailbreak / hors-sujet
+[InputGuardrails]      → BLOQUÉ si jailbreak / off-topic / toxique
       │
       ▼
-[Greeting?]  ──→ OUI : réponse conversationnelle directe
+[Greeting?]            → OUI : réponse conversationnelle directe
       │
       ▼
-[normalize_query()]  darija → français (DARIJA_MAP 30+ entrées)
+[detect_language]      → FR ou AR (charge le guide correspondant)
       │
       ▼
-[classify_intent()]  submit / track / close / satisfaction
-      │  → section hint ajouté à la requête de recherche
-      ▼
-[embed_query()]  MiniLM-L12 → vecteur 384 dimensions
+[embed_query()]        → vecteur 768-dim (multilingual-e5-base)
       │
       ▼
-[hybrid_search()]  semantic + keyword boost (pg_trgm), TOP_K=3
+[hybrid_search()]      → semantic + keyword, top_k filtré sur le guide
       │
       ▼
-[LLM qwen2.5:3b]  prompt ciblé portail, MAX_TOKENS=512
+[grounding check]      → si avg_score < 0.40 : retour "hors guide"
       │
       ▼
-[QueryResponse]  answer + citations + confidence score
+[LLM qwen2.5:3b]       → génère la réponse à partir du contexte
+      │
+      ▼
+[post_validate]        → vérifie ancrage de la réponse (≥ 50 % tokens
+      │                   présents dans le contexte) sinon "hors guide"
+      ▼
+QueryResponse / SSE stream
 ```
 
 ---
@@ -117,100 +124,350 @@ Question utilisateur
 ### Prérequis
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) ≥ 4.x
-- RAM disponible ≥ 3 GB (le modèle Ollama utilise ~2 GB)
+- RAM disponible ≥ 4 GB (Ollama ~2 GB + embedding ~1 GB)
 - Connexion internet (premier lancement uniquement — téléchargement des modèles)
 
 ### Lancement
 
 ```bash
-# 1. Copier la configuration
+# 1. Configuration
 cp env.example .env
 
 # 2. Démarrer tous les services
 docker compose up -d
 
-# 3. Attendre qu'Ollama télécharge et charge qwen2.5:3b (~5 min)
+# 3. Suivre le téléchargement de qwen2.5:3b (~5 min, une seule fois)
 docker logs atlas-ollama -f
-#    ✓  Modèle chargé en RAM
 
-# 4. Attendre que l'API pre-warm le modèle d'embedding (~1 min)
+# 4. Suivre le pre-warm de l'embedding model (~1 min, une seule fois)
 docker logs atlas-api -f
-#    ✓  Embedding model pre-loaded successfully
+#    Attendre: "Embedding model pre-loaded successfully"
 
-# 5. Indexer le guide portail
+# 5. Indexer les guides (FR + AR)
 docker exec atlas-api python -m data_ingestion.pipeline --recreate
 
 # 6. Ouvrir l'interface
 # http://localhost:3000
 ```
 
-> **Note :** Le premier démarrage télécharge qwen2.5:3b (1.9 GB) et le modèle d'embedding (~34 MB).  
-> Les démarrages suivants sont instantanés — tout est mis en cache dans les volumes Docker (`ollama_data`, `atlas-hf-cache`).
+> **Premier démarrage** : qwen2.5:3b (1.9 GB) + multilingual-e5-base (~1.1 GB) sont téléchargés et mis en cache dans les volumes `atlas-ollama-data` et `atlas-hf-cache`. Les redémarrages suivants prennent < 30 s.
 
-> **Important :** Lancer l'ingestion (étape 5) uniquement après que l'API affiche "pre-loaded successfully".  
-> Lancer les deux simultanément provoquerait un conflit de téléchargement du modèle d'embedding.
+> **Important** : ne pas lancer l'ingestion (étape 5) tant que l'API n'a pas affiché `Embedding model pre-loaded successfully` — sinon conflit de téléchargement.
 
 ---
 
-## Services Docker
+## Intégration dans une application existante
 
-| Service | Image | Port | Rôle |
-|---------|-------|------|------|
-| `postgres` | pgvector/pgvector:pg16 | 5432 | Base vectorielle |
-| `pgadmin` | dpage/pgadmin4:8.10 | 5050 | Administration BDD |
-| `ollama` | build: ./ollama | 11434 | LLM local (qwen2.5:3b) |
-| `api` | build: ./backend_api | 8080 | Backend FastAPI |
-| `ui` | build: ./frontend_ui | 3000 | Interface React + Nginx |
+Trois stratégies au choix selon le besoin.
 
-**Accès :**
+### Option A — Embarquer l'UI complète via `iframe`
 
-| Interface | URL | Identifiants |
-|-----------|-----|-------------|
-| Chatbot | http://localhost:3000 | — |
-| API docs (Swagger) | http://localhost:8080/docs | — |
-| pgAdmin | http://localhost:5050 | admin@atlas.com / admin |
-| Santé API | http://localhost:8080/health | — |
+La plus simple : on déploie la stack telle quelle et on embarque le frontend dans l'application hôte.
+
+```html
+<iframe
+  src="https://chatbot.acaps.local/"
+  style="border:0; width:420px; height:640px;"
+  title="Assistant ACAPS"
+  allow="clipboard-write"
+></iframe>
+```
+
+Configuration côté serveur :
+
+- Mettre `frontend_ui` derrière le même reverse proxy que l'application hôte (ou un sous-domaine dédié).
+- Si l'application hôte et le chatbot sont sur des origines différentes, ajuster `CORS_ORIGINS` (voir [Variables d'environnement](#variables-denvironnement)) et autoriser l'origine hôte dans la CSP de l'iframe.
+
+### Option B — Appel direct à l'API (REST classique)
+
+Pour une intégration native (composant React/Vue/Angular dans l'application existante) qui veut sa propre UI.
+
+```ts
+// Exemple TypeScript
+async function askAcaps(question: string, conversationId?: string) {
+  const res = await fetch('https://chatbot.acaps.local/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, conversation_id: conversationId }),
+  });
+  if (!res.ok) throw new Error('chatbot_unavailable');
+  return res.json(); // { answer, citations[], confidence, conversation_id, metadata }
+}
+```
+
+### Option C — Streaming Server-Sent Events (recommandé UX)
+
+Affichage token-par-token, identique à ce que fait l'UI fournie.
+
+```ts
+async function askAcapsStream(
+  question: string,
+  conversationId: string | undefined,
+  onToken: (text: string, replace?: boolean) => void,
+  onMeta: (meta: { citations: Citation[]; confidence: number }) => void,
+  onDone: () => void,
+) {
+  const res = await fetch('/api/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify({ question, conversation_id: conversationId }),
+  });
+  if (!res.ok || !res.body) throw new Error('network_error');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let sep: number;
+    while ((sep = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      let event = 'message';
+      const dataLines: string[] = [];
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+      }
+      const data = dataLines.length ? JSON.parse(dataLines.join('\n')) : {};
+      if (event === 'meta')  onMeta(data);
+      if (event === 'token') onToken(data.text ?? '', !!data.replace);
+      if (event === 'done')  onDone();
+    }
+  }
+}
+```
+
+**Événements SSE émis :**
+
+| Événement | Payload | Quand |
+|-----------|---------|-------|
+| `start`   | `{ conversation_id }` | Une fois, à l'ouverture du flux |
+| `meta`    | `{ citations, confidence, metadata }` | Une fois, après la recherche |
+| `token`   | `{ text, replace? }` | N fois, pour chaque chunk de texte. `replace: true` indique que la réponse doit être réécrite intégralement (post-validation a échoué) |
+| `done`    | `{}` | Une fois, fin du flux |
+| `error`   | `{ message }` | En cas d'erreur fatale |
+
+> Si le proxy de l'application hôte est Nginx, **désactiver le buffering** sur cette route :
+> ```nginx
+> location /api/chat/stream {
+>     proxy_pass http://api:8080/chat/stream;
+>     proxy_buffering off;
+>     proxy_read_timeout 300s;
+>     proxy_set_header X-Accel-Buffering no;
+> }
+> ```
+
+### Configuration CORS
+
+Par défaut `CORS_ORIGINS=*`. Pour la production, restreindre :
+
+```bash
+# .env
+CORS_ORIGINS=https://portal.acaps.ma,https://intranet.acaps.ma
+```
+
+### Authentification
+
+Le backend ne gère **pas** l'authentification — il est conçu pour être déployé derrière un reverse-proxy ou un API gateway qui fait l'auth (mTLS, JWT, OAuth2…). À ajouter au niveau Nginx/Traefik en amont.
+
+Si une auth applicative est nécessaire, ajouter une dépendance FastAPI dans [backend_api/app/main.py](backend_api/app/main.py) sur les routes `/chat` et `/chat/stream`.
+
+### Persistance de la conversation
+
+Le `conversation_id` est généré côté serveur si non fourni. **Aucun historique n'est stocké côté backend** — l'application cliente est responsable de :
+
+1. Conserver le `conversation_id` retourné dans la première réponse (`event: start` en SSE, ou champ `conversation_id` en REST).
+2. Le renvoyer dans les requêtes suivantes pour permettre une corrélation des logs côté serveur.
+
+> Important : actuellement le backend ne ré-injecte pas l'historique dans le prompt. Si vous avez besoin de mémoire conversationnelle, il faut l'implémenter côté client (passer l'historique dans `question`) ou étendre [engine.py](backend_api/app/engine.py) (`RAGEngine.query`).
+
+---
+
+## Référence API
+
+Documentation Swagger interactive : `http://localhost:8080/docs`
+
+### `POST /chat` — Réponse synchrone
+
+**Requête**
+```json
+{
+  "question": "Comment soumettre une réclamation ?",
+  "conversation_id": "uuid-optionnel",
+  "language": "auto"
+}
+```
+
+**Réponse**
+```json
+{
+  "answer": "Pour soumettre une réclamation, suivez les étapes suivantes…",
+  "citations": [
+    {
+      "title": "Section 1 – Soumettre une Réclamation > Étape 1",
+      "url": "",
+      "score": 0.57,
+      "snippet": "Saisissez votre nom et prénom..."
+    }
+  ],
+  "confidence": 0.57,
+  "conversation_id": "f3a9…",
+  "metadata": {
+    "retrieval_count": 3,
+    "top_score": 0.62,
+    "model": "qwen2.5:3b"
+  }
+}
+```
+
+### `POST /chat/stream` — Server-Sent Events
+
+Même payload que `/chat`. Réponse en `text/event-stream` (voir [Option C](#option-c--streaming-server-sent-events-recommandé-ux)).
+
+### `GET /health`
+
+```json
+{
+  "status": "healthy",
+  "components": { "vector_store": true, "llm": true, "embedder": true, "overall": true },
+  "version": "1.0.0",
+  "timestamp": "2026-04-28T08:30:00Z"
+}
+```
+
+### `GET /stats`
+
+```json
+{
+  "vector_store": { "total_chunks": 17, "table": "atlas_knowledge" },
+  "config": {
+    "model": "qwen2.5:3b",
+    "embedding_model": "intfloat/multilingual-e5-base",
+    "top_k": 8,
+    "threshold": 0.25
+  }
+}
+```
+
+### `POST /ingest`
+
+Réindexer un fichier ou un dossier sans redémarrer l'API.
+
+```json
+{
+  "file_path": "data_ingestion/documents/guide_portal_acaps 3.md",
+  "directory": null,
+  "recreate_collection": false
+}
+```
+
+### `POST /feedback`
+
+```json
+{ "conversation_id": "f3a9…", "rating": 4, "helpful": true, "comment": "Réponse claire" }
+```
+
+### Codes d'erreur
+
+| Statut | Cause | Comportement client recommandé |
+|--------|-------|-------------------------------|
+| `400`  | Validation Pydantic (`question` vide ou > 2000 chars) | Corriger l'input |
+| `500`  | Erreur LLM / vector store | Retry après quelques secondes |
+| `503`  | API en cours de pre-warm | Attendre le `/health` `overall: true` |
 
 ---
 
 ## Variables d'environnement
 
-Fichier `.env` (copie de `env.example`) :
+Fichier `.env` à la racine (copie de `env.example`).
+
+> ⚠️ **Note importante** : le backend lit les variables `LLM_*` (et non `VLLM_*` qui apparaissent dans `env.example` pour des raisons historiques). Les variables effectivement utilisées sont celles listées ci-dessous, qui correspondent à `docker-compose.yml`.
 
 ```bash
-# LLM
-VLLM_MODEL=qwen2.5:3b
-VLLM_URL=http://ollama:11434/v1
-VLLM_API_KEY=ollama
-LLM_PROVIDER=ollama
+# LLM (Ollama OpenAI-compatible)
+LLM_MODEL=qwen2.5:3b
+LLM_BASE_URL=http://ollama:11434/v1
+LLM_API_KEY=ollama
 
 # Base de données
 DATABASE_URL=postgresql://atlas:atlas@postgres:5432/atlas_rag
+VECTOR_TABLE=atlas_knowledge
 POSTGRES_DB=atlas_rag
 POSTGRES_USER=atlas
 POSTGRES_PASSWORD=atlas
 
-# Embedding (AutoTokenizer + AutoModel via transformers)
-EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-EMBEDDING_DIMENSION=384
+# Embedding
+EMBEDDING_MODEL=intfloat/multilingual-e5-base
+EMBEDDING_DIMENSION=768
 
 # RAG
-SIMILARITY_THRESHOLD=0.40
-TOP_K_RESULTS=3
-MAX_TOKENS=512
-TEMPERATURE=0.0
+SIMILARITY_THRESHOLD=0.25      # seuil de filtrage par chunk (vector store)
+TOP_K_RESULTS=8
+TEMPERATURE=0
+MAX_TOKENS=600
 
 # Sécurité
 ENABLE_GUARDRAILS=true
+LOG_LEVEL=INFO
+DEBUG=false
+CORS_ORIGINS=*
 ```
 
-**Changer de LLM provider :**
+### Changer de provider LLM
 
-| Provider | VLLM_URL | LLM_PROVIDER |
-|----------|----------|--------------|
-| Ollama (défaut) | `http://ollama:11434/v1` | `ollama` |
-| OpenRouter | `https://openrouter.ai/api/v1` | `openrouter` |
-| OpenAI | `https://api.openai.com/v1` | `openai` |
+Le backend utilise une API OpenAI-compatible. Tout provider compatible fonctionne :
+
+| Provider | `LLM_BASE_URL` | `LLM_API_KEY` | `LLM_MODEL` |
+|----------|----------------|---------------|-------------|
+| Ollama (défaut) | `http://ollama:11434/v1` | `ollama` | `qwen2.5:3b` |
+| OpenRouter | `https://openrouter.ai/api/v1` | `sk-or-…` | `qwen/qwen-2.5-7b-instruct` |
+| OpenAI | `https://api.openai.com/v1` | `sk-…` | `gpt-4o-mini` |
+
+---
+
+## Configuration métier (JSON)
+
+Trois fichiers permettent d'ajuster le comportement **sans rebuild** :
+
+### [backend_api/config/engine_config.json](backend_api/config/engine_config.json)
+
+```json
+{
+  "portal_file_fr": "guide_portal_acaps 3.md",
+  "portal_file_ar": "guide_portal_acaps_ar.md",
+  "max_chunk_chars_for_prompt": 500,
+  "min_confidence_threshold": 0.40,
+  "high_confidence_skip_hallucination": 0.50,
+  "min_answer_length": 5,
+  "answer_grounding_min_ratio": 0.5,
+  "answer_grounding_min_tokens": 3,
+  "greeting_keywords": ["bonjour", "salut", ...]
+}
+```
+
+| Clé | Effet |
+|-----|-------|
+| `min_confidence_threshold` | Score moyen minimum pour considérer la requête « ancrée » dans le guide. Si en-dessous → message « hors guide ». |
+| `answer_grounding_min_ratio` | Proportion minimale de mots-clés de la réponse qui doivent apparaître dans le contexte récupéré. Évite que le LLM réponde de mémoire (ex. capitales, dates, etc.). |
+| `answer_grounding_min_tokens` | Réponses plus courtes que ce nombre de tokens « content » sautent la vérification d'ancrage. |
+
+### [backend_api/config/prompts.json](backend_api/config/prompts.json)
+
+Prompts système et utilisateur en français et en arabe. Modifier ici pour :
+- changer le ton de l'assistant
+- restreindre/élargir le périmètre
+- adapter à un autre domaine fonctionnel
+
+### [backend_api/config/guardrails_config.json](backend_api/config/guardrails_config.json)
+
+Patterns regex pour la détection d'attaques d'injection, de toxicité, de hors-sujet, et messages de blocage en FR/AR.
+
+> Les fichiers de config sont montés en volume read-only (`./backend_api/config:/app/config:ro`). Pour les recharger : `docker compose restart api`.
 
 ---
 
@@ -218,10 +475,11 @@ ENABLE_GUARDRAILS=true
 
 Les documents sources sont des fichiers Markdown dans `data_ingestion/documents/`.
 
-**Document actif :**
-- `guide_portal_acaps.md` — Guide officiel d'utilisation du portail (17 chunks)
+**Documents actifs :**
+- `guide_portal_acaps 3.md` — guide officiel français
+- `guide_portal_acaps_ar.md` — version arabe
 
-### Format attendu
+### Format Markdown attendu
 
 ```markdown
 ---
@@ -236,94 +494,93 @@ version: 1.0
 - Instruction B
 ```
 
-### Commandes d'ingestion
+### Commandes
 
 ```bash
-# Réindexer complètement (recommandé après modification du guide ou changement de dimension)
+# Réindexation complète (recommandé après modification du guide)
 docker exec atlas-api python -m data_ingestion.pipeline --recreate
 
-# Ingestion incrémentale (seulement les fichiers modifiés)
+# Incrémentale (seuls les fichiers modifiés)
 docker exec atlas-api python -m data_ingestion.pipeline
+
+# Via l'API (sans entrer dans le container)
+curl -X POST http://localhost:8080/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"recreate_collection": true}'
 ```
+
+### Ajouter un nouveau document
+
+1. Déposer le fichier `.md` dans `data_ingestion/documents/`
+2. Si la langue diffère, mettre à jour `engine_config.json` (`portal_file_fr` ou `portal_file_ar`)
+3. Lancer `--recreate`
+4. Vérifier `GET /stats` pour confirmer le nouveau nombre de chunks
 
 ---
 
-## API REST
+## Services Docker
 
-### `POST /chat`
+| Service | Image | Port | Rôle |
+|---------|-------|------|------|
+| `postgres` | pgvector/pgvector:pg16 | 5432 | Base vectorielle |
+| `pgadmin` | dpage/pgadmin4:8.10 | 5050 | Administration BDD |
+| `ollama` | ollama/ollama:latest | 11434 | LLM local (qwen2.5:3b) |
+| `api` | build: ./backend_api | 8080 | Backend FastAPI |
+| `ui` | build: ./frontend_ui | 3000 | Interface React + Nginx |
 
-```json
-// Requête
-{
-  "question": "Comment soumettre une réclamation ?",
-  "conversation_id": "uuid-optionnel"
-}
+**Accès :**
 
-// Réponse
-{
-  "answer": "Pour soumettre une réclamation, suivez les étapes suivantes...",
-  "citations": [
-    {
-      "title": "Section 1 – Soumettre une Réclamation > Étape 1",
-      "url": "",
-      "score": 0.57,
-      "snippet": "Saisissez votre nom et prénom..."
-    }
-  ],
-  "confidence": 0.57,
-  "conversation_id": "uuid",
-  "metadata": { "retrieval_count": 3, "model": "qwen2.5:3b", "intent": "submit" }
-}
-```
-
-### Autres endpoints
-
-| Méthode | Route | Description |
-|---------|-------|-------------|
-| `GET` | `/health` | Santé des composants |
-| `GET` | `/stats` | Statistiques vector store |
-| `POST` | `/ingest` | Déclencher ingestion |
-| `POST` | `/feedback` | Feedback utilisateur |
+| Interface | URL | Identifiants |
+|-----------|-----|-------------|
+| Chatbot | http://localhost:3000 | — |
+| API docs (Swagger) | http://localhost:8080/docs | — |
+| pgAdmin | http://localhost:5050 | admin@atlas.com / admin |
+| Santé API | http://localhost:8080/health | — |
 
 ---
 
 ## Structure du projet
 
 ```
-chatbot-_acaps/
+ChatAssistantAcaps/
 ├── backend_api/
 │   ├── app/
-│   │   ├── main.py          # Endpoints FastAPI, lifespan + embedding pre-warm
-│   │   ├── engine.py        # Moteur RAG (normalize → intent → embed → search → LLM)
+│   │   ├── main.py          # Endpoints FastAPI (chat, stream, health, ingest, stats)
+│   │   ├── engine.py        # Moteur RAG (lang detect → embed → search → LLM → grounding)
 │   │   ├── models.py        # Schémas Pydantic
 │   │   ├── config.py        # Settings (pydantic-settings)
-│   │   └── guardrails/      # Validation input/output
-│   ├── Dockerfile           # Multi-stage, torch CPU-only, run as root
+│   │   └── guardrails/      # Validation input/output (regex)
+│   ├── config/
+│   │   ├── engine_config.json     # Seuils RAG, fichiers source
+│   │   ├── prompts.json           # Prompts FR / AR
+│   │   └── guardrails_config.json # Patterns + messages bloqués
+│   ├── Dockerfile
 │   └── requirements.txt
 │
 ├── data_ingestion/
 │   ├── documents/
-│   │   └── guide_portal_acaps.md   # Source unique (17 chunks)
+│   │   ├── guide_portal_acaps 3.md   # Source FR
+│   │   └── guide_portal_acaps_ar.md  # Source AR
 │   ├── parser.py            # Markdown → DocumentChunk[]
-│   ├── embedder.py          # AutoTokenizer+AutoModel MiniLM-L12 (384-dim)
-│   ├── vector_store.py      # PostgreSQL + pgvector, hybrid_search()
+│   ├── embedder.py          # multilingual-e5-base (768-dim)
+│   ├── vector_store.py      # PostgreSQL + pgvector + hybrid_search()
 │   └── pipeline.py          # Orchestration ingestion
 │
 ├── frontend_ui/
 │   ├── src/
-│   │   ├── App.tsx          # Interface chat React, palette ACAPS
-│   │   └── index.css        # Styles ACAPS (sky/navy/sand)
-│   ├── nginx.conf           # Proxy /api, timeout 300s
-│   └── Dockerfile           # Node build → Nginx serve
+│   │   ├── App.tsx          # Interface chat (SSE streaming)
+│   │   ├── main.tsx         # Bootstrap React
+│   │   └── index.css        # Tailwind + thème ACAPS
+│   ├── nginx.conf           # Proxy /api, SSE buffering off
+│   ├── vite.config.ts
+│   └── Dockerfile           # Vite build → Nginx serve
 │
 ├── ollama/
-│   ├── Dockerfile           # ollama/ollama + python3
-│   ├── entrypoint.sh        # Pull + warm-up modèle
-│   └── progress_parser.py   # Affichage progression téléchargement
+│   └── Dockerfile
 │
 ├── tests/
-│   ├── test_pipeline_full.py   # 62 questions (FR / AR / Darija / mix)
-│   └── test_results.json       # Résultats dernière exécution
+│   ├── test_check.py
+│   └── testfinale.py        # Banque de questions FR/AR/Darija
 │
 ├── docker-compose.yml
 ├── env.example
@@ -335,74 +592,51 @@ chatbot-_acaps/
 
 ## Tests
 
-Le script `tests/test_pipeline_full.py` valide le pipeline complet sur 62 questions réparties en 12 catégories.
+Banque de questions dans [tests/testfinale.py](tests/testfinale.py) couvrant FR, AR, darija et cas piégeux (questions hors guide, jailbreaks, etc.).
 
 ```bash
 # Prérequis : API healthy + ingestion terminée
-PYTHONIOENCODING=utf-8 python tests/test_pipeline_full.py
+PYTHONIOENCODING=utf-8 python tests/testfinale.py
 ```
 
-### Résultats (dernière exécution — 2026-04-22)
+Pour un smoke-test rapide :
 
-| Catégorie | ✅ | 🔄 | Note |
-|-----------|----|----|------|
-| Basiques FR | 6/7 | 1 | "email obligatoire" — phrasing |
-| Basiques AR | 7/7 | 0 | Parfait |
-| Reformulation FR | 4/6 | 2 | "me plaindre" + "état dossier" |
-| Reformulation AR/Darija | 5/6 | 1 | Darija pur sans script arabe |
-| Pièges FR | 4/5 | 1 | "téléphone obligatoire" phrasing |
-| Pièges AR | 4/5 | 1 | Taille fichier non couverte |
-| Scénario FR | 4/5 | 1 | "référence perdue" — contenu absent |
-| Scénario AR | 5/5 | 0 | Parfait |
-| Multi-étapes FR | 3/4 | 1 | assurance/prévoyance — contenu absent |
-| Multi-étapes AR | 3/4 | 1 | idem |
-| Bruit FR+Darija | 2/4 | 2 | Translittération latine non supportée |
-| Bruit AR mix | 4/4 | 0 | Parfait |
-| **TOTAL** | **51/62** | **11/62** | **0 bloqués, 1 erreur réseau** |
-
-> 🔄 = réponse fournie via LLM general knowledge, sans citation documentaire  
-> Les améliorations prioritaires : synonymes français informels + contenu manquant dans le guide
+```bash
+curl -s http://localhost:8080/health | jq .
+curl -s -X POST http://localhost:8080/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Comment soumettre une réclamation ?"}' | jq .
+```
 
 ---
 
 ## Dépannage
 
-### Le chatbot répond "erreur survenue"
-
-**Cause :** Ollama est encore en train de charger le modèle (première requête après démarrage).
-
+### Le chatbot répond « erreur survenue »
+Ollama est encore en train de charger le modèle (première requête après démarrage).
 ```bash
-docker logs atlas-ollama --tail=5
-# Attendre que qwen2.5:3b soit chargé
+docker logs atlas-ollama --tail=20
 ```
 
-### Réponse "je ne peux pas trouver cette information"
+### Réponse « Je ne trouve pas cette information dans les documents… »
+Trois causes possibles :
+1. La base vectorielle est vide → lancer l'ingestion (`docker exec atlas-api python -m data_ingestion.pipeline --recreate`).
+2. Le score moyen de retrieval est < `min_confidence_threshold` (0.40) → soit la question est légitimement hors guide, soit ajuster le seuil dans `engine_config.json`.
+3. La vérification d'ancrage a échoué → consulter `docker logs atlas-api` pour le message `Answer not grounded — overlap …`.
 
-**Cause :** La base vectorielle est vide ou le modèle d'embedding n'est pas encore chargé.
+### Conteneur `api` redémarre en boucle (exit code 137)
+OOM kill. Augmenter la RAM allouée à Docker Desktop (≥ 4 GB) ou réduire `MAX_TOKENS`.
 
-```bash
-# Vérifier que l'API a fini de charger le modèle d'embedding
-docker logs atlas-api --tail=10
-# Chercher : "Embedding model pre-loaded successfully"
+### Conflit de téléchargement du modèle d'embedding
+Lancer l'ingestion uniquement après `Embedding model pre-loaded successfully` dans `docker logs atlas-api`.
 
-# Puis lancer l'ingestion
-docker exec atlas-api python -m data_ingestion.pipeline --recreate
-```
+### CORS bloque les requêtes depuis l'application hôte
+Mettre l'origine de l'hôte dans `CORS_ORIGINS` puis `docker compose restart api`.
 
-### Conteneur api redémarre en boucle (exit code 137)
+### Le streaming SSE coupe au bout de quelques tokens
+Vérifier que le proxy en amont **désactive le buffering** sur `/chat/stream` (cf. [Option C](#option-c--streaming-server-sent-events-recommandé-ux)).
 
-**Cause :** Manque de RAM (OOM kill). MiniLM + Ollama nécessitent ~3 GB RAM disponible.
-
-**Solution :** Fermer les applications consommant de la RAM. Vérifier dans Docker Desktop → Resources → Memory ≥ 4 GB.
-
-### Conflit téléchargement modèle d'embedding
-
-**Cause :** L'API et la commande d'ingestion téléchargent le modèle simultanément au premier lancement.
-
-**Solution :** Attendre que l'API affiche "pre-loaded successfully" avant de lancer l'ingestion.
-
-### Vérifier l'état général
-
+### État général en une commande
 ```bash
 docker compose ps
 curl http://localhost:8080/health
